@@ -66,7 +66,7 @@ REQUIRED_QUESTIONS = [
     },
     {
         "key": "duration",
-        "question": "How long does each cleaning session take?",
+        "question": "How long does it take to clean your entire facility each time?",
         "chips": ["1 hr", "2 hr", "4 hr", "Other"],
     },
     {
