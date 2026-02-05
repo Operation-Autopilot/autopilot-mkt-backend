@@ -153,6 +153,7 @@ class ROIService:
         self,
         robot: dict[str, Any],
         inputs: ROIInputs,
+        answers: dict[str, Any] | None = None,
     ) -> ROICalculation:
         """Calculate ROI for a specific robot.
 
@@ -227,7 +228,7 @@ class ROIService:
             payback_months = purchase_price / estimated_monthly_savings
 
         # Determine confidence level
-        confidence = self._determine_confidence(inputs)
+        confidence = self._determine_confidence(answers or {})
 
         # Factors considered
         factors_considered = [
@@ -257,20 +258,30 @@ class ROIService:
             factors_considered=factors_considered,
         )
 
-    def _determine_confidence(self, inputs: ROIInputs) -> Literal["high", "medium", "low"]:
-        """Determine confidence level based on input quality.
+    def _determine_confidence(self, answers: dict[str, Any]) -> Literal["high", "medium", "low"]:
+        """Determine confidence level based on how many ROI-relevant questions the user answered.
+
+        The three discovery questions that directly affect ROI accuracy:
+        - monthly_spend: drives cost baseline
+        - frequency: drives hours calculation
+        - duration: drives hours calculation
 
         Args:
-            inputs: ROI inputs to evaluate.
+            answers: Discovery answers from the session.
 
         Returns:
-            Confidence level string.
+            Confidence level: high (3/3 answered), medium (1-2), low (0).
         """
-        # High confidence if we have specific spend and hours data
-        if inputs.manual_monthly_spend > 0 and inputs.manual_monthly_hours > 0:
-            # Check if values seem reasonable (not defaults)
-            if inputs.manual_monthly_spend not in [4330.0] and inputs.manual_monthly_hours not in [60.0]:
-                return "high"
+        roi_keys = ["monthly_spend", "frequency", "duration"]
+        answered = sum(
+            1 for key in roi_keys
+            if key in answers and answers[key]
+            and (answers[key].get("value") if isinstance(answers[key], dict) else answers[key])
+        )
+
+        if answered >= 3:
+            return "high"
+        if answered >= 1:
             return "medium"
         return "low"
 
@@ -295,7 +306,7 @@ class ROIService:
         inputs = request.roi_inputs or self.derive_roi_inputs(request.answers)
 
         # Calculate ROI
-        calculation = self.calculate_roi(robot, inputs)
+        calculation = self.calculate_roi(robot, inputs, answers=request.answers)
 
         return ROICalculationResponse(
             robot_id=request.robot_id,
@@ -646,7 +657,7 @@ class ROIService:
                 continue
 
             # Calculate ROI for this robot
-            roi = self.calculate_roi(robot, inputs)
+            roi = self.calculate_roi(robot, inputs, answers=request.answers)
 
             # Get label
             label = self._get_recommendation_label(rank, score, robot)
