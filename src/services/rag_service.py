@@ -111,6 +111,8 @@ class RAGService:
                 model=self._settings.embedding_model,
                 input=text,
             )
+            if not response.data:
+                raise ValueError("No embedding returned from OpenAI")
             return response.data[0].embedding
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
@@ -227,7 +229,7 @@ class RAGService:
 
             # Format results
             search_results = []
-            for match in results.matches:
+            for match in (results.matches or []):
                 search_results.append(
                     {
                         "robot_id": match.metadata.get("robot_id") if match.metadata else None,
@@ -274,7 +276,7 @@ class RAGService:
 
             # Format results with semantic scores
             search_results = []
-            for match in results.matches:
+            for match in (results.matches or []):
                 search_results.append({
                     "robot_id": match.metadata.get("robot_id") if match.metadata else None,
                     "semantic_score": match.score,

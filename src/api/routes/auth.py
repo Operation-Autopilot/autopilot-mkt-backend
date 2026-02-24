@@ -327,47 +327,6 @@ async def reset_password(data: ResetPasswordRequest) -> ResetPasswordResponse:
         ) from e
 
 
-@router.get(
-    "/reset-password",
-    response_model=ResetPasswordResponse,
-    summary="Reset password (GET)",
-    description="Reset password using token from query parameter. Used for email link redirects.",
-)
-async def reset_password_get(
-    token: str = Query(..., description="Password reset token from email link"),
-    new_password: str = Query(..., description="New password"),
-) -> ResetPasswordResponse:
-    """Reset user password via GET request (for email link redirects).
-
-    This endpoint is used when users click the password reset link in their email.
-    Note: In practice, GET requests for password reset are less secure.
-    Consider redirecting to a frontend form instead.
-
-    Args:
-        token: Password reset token from email link.
-        new_password: New password.
-
-    Returns:
-        ResetPasswordResponse: Reset status and redirect URL.
-
-    Raises:
-        HTTPException: 400 if reset fails.
-    """
-    service = AuthService()
-
-    try:
-        result = await service.reset_password(
-            token=token,
-            new_password=new_password,
-        )
-        return ResetPasswordResponse(**result)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        ) from e
-
-
 @router.post(
     "/change-password",
     response_model=ChangePasswordResponse,

@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserContext(BaseModel):
@@ -82,7 +82,7 @@ class SignupRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    email: str = Field(..., description="User's email address", min_length=3, max_length=255)
+    email: EmailStr = Field(..., description="User's email address")
     password: str = Field(..., description="User's password", min_length=8, max_length=100)
     display_name: str | None = Field(default=None, description="User's display name", max_length=255)
     company_name: str | None = Field(default=None, description="Company name to create", max_length=255)
@@ -125,7 +125,7 @@ class ResendVerificationRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    email: str = Field(..., description="Email address to resend verification to")
+    email: EmailStr = Field(..., description="Email address to resend verification to")
 
 
 class ResendVerificationResponse(BaseModel):
@@ -142,7 +142,7 @@ class LoginRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    email: str = Field(..., description="User's email address")
+    email: EmailStr = Field(..., description="User's email address")
     password: str = Field(..., description="User's password")
 
 
@@ -166,7 +166,7 @@ class ForgotPasswordRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    email: str = Field(..., description="User's email address", min_length=3, max_length=255)
+    email: EmailStr = Field(..., description="User's email address")
 
 
 class ForgotPasswordResponse(BaseModel):

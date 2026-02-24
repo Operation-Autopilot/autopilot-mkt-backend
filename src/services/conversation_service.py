@@ -1,5 +1,6 @@
 """Conversation business logic service."""
 
+import asyncio
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -22,6 +23,10 @@ class ConversationService:
         """Initialize conversation service with Supabase client."""
         self.client = get_supabase_client()
         self.company_service = CompanyService()
+
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
 
     async def create_conversation(
         self,
@@ -49,6 +54,8 @@ class ConversationService:
 
         response = self.client.table("conversations").insert(conversation_data).execute()
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def get_conversation(self, conversation_id: UUID) -> dict[str, Any] | None:
@@ -310,13 +317,17 @@ class ConversationService:
             "metadata": metadata or {},
         }
 
-        response = self.client.table("messages").insert(message_data).execute()
+        query = self.client.table("messages").insert(message_data)
+        response = await self._execute_sync(query)
 
         # Update conversation updated_at
-        self.client.table("conversations").update(
+        update_query = self.client.table("conversations").update(
             {"updated_at": datetime.utcnow().isoformat()}
-        ).eq("id", str(conversation_id)).execute()
+        ).eq("id", str(conversation_id))
+        await self._execute_sync(update_query)
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def get_messages(
@@ -426,6 +437,8 @@ class ConversationService:
 
         response = self.client.table("conversations").insert(conversation_data).execute()
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def can_access_by_session(
@@ -543,6 +556,8 @@ class ConversationService:
             conversation_data["company_id"] = str(company_id)
 
         response = self.client.table("conversations").insert(conversation_data).execute()
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0], True
 
     async def create_fresh_for_profile(
@@ -576,6 +591,8 @@ class ConversationService:
             conversation_data["company_id"] = str(company_id)
 
         response = self.client.table("conversations").insert(conversation_data).execute()
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def create_fresh_for_session(
@@ -605,6 +622,8 @@ class ConversationService:
         }
 
         response = self.client.table("conversations").insert(conversation_data).execute()
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def get_or_create_current_for_session(
@@ -648,4 +667,6 @@ class ConversationService:
         }
 
         response = self.client.table("conversations").insert(conversation_data).execute()
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0], True

@@ -46,6 +46,20 @@ class ROIInputsSchema(BaseModel):
     manualMonthlySpend: float = Field(ge=0, description="Current monthly spend on manual cleaning")
     manualMonthlyHours: float = Field(ge=0, description="Current monthly hours spent on manual cleaning")
 
+    def to_roi_inputs(self) -> dict[str, float]:
+        """Convert camelCase schema fields to snake_case ROI calculation inputs.
+
+        Returns:
+            Dictionary with snake_case keys for the ROI calculation service.
+        """
+        return {
+            "labor_rate": self.laborRate,
+            "utilization": self.utilization,
+            "maintenance_factor": self.maintenanceFactor,
+            "manual_monthly_spend": self.manualMonthlySpend,
+            "manual_monthly_hours": self.manualMonthlyHours,
+        }
+
 
 # Payment method options
 PaymentMethod = Literal["card", "paypal", "bank"]

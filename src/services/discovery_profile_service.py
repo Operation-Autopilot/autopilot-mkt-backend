@@ -81,6 +81,8 @@ class DiscoveryProfileService:
             .execute()
         )
 
+        if not response.data:
+            raise ValueError("Failed to create discovery profile")
         return response.data[0]
 
     async def get_by_profile_id(self, profile_id: UUID) -> dict[str, Any] | None:

@@ -41,6 +41,8 @@ class CompanyService:
             .execute()
         )
 
+        if not company_response.data:
+            raise ValueError("Database operation returned no data")
         company = company_response.data[0]
 
         # Add owner as first member with 'owner' role

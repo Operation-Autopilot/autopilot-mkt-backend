@@ -134,6 +134,23 @@ class TestSettings:
             assert "supabase_url" in error_fields
 
 
+class TestConfigDefaults:
+    """Tests for configuration default values."""
+
+    def test_max_request_body_size_supports_floor_plans(self):
+        """max_request_body_size should be at least 11MB for floor plan uploads."""
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        # 11MB = 11 * 1024 * 1024 = 11534336
+        assert settings.max_request_body_size >= 11534336, (
+            f"max_request_body_size is {settings.max_request_body_size}, "
+            f"should be >= 11534336 for floor plan uploads"
+        )
+
+        get_settings.cache_clear()
+
+
 class TestGetSettings:
     """Tests for get_settings function."""
 

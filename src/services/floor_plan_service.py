@@ -276,7 +276,7 @@ class FloorPlanService:
                 cost_estimate=cost_estimate,
                 tokens_used=tokens_used,
                 analysis_duration_ms=analysis_duration_ms,
-                created_at=self._get_record(analysis_id)["created_at"],
+                created_at=(self._get_record(analysis_id) or {}).get("created_at"),
             )
 
             return FloorPlanWithRecommendationsResponse(

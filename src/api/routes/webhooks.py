@@ -1,6 +1,7 @@
 """Webhook API routes for external service integrations."""
 
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -9,6 +10,10 @@ from src.services.checkout_service import CheckoutService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+# Webhook replay prevention — in-memory event ID tracking
+_processed_events: dict[str, float] = {}  # event_id -> timestamp
+_EVENT_TTL = 3600  # 1 hour
 
 
 @router.post(
@@ -66,6 +71,20 @@ async def stripe_webhook(request: Request) -> dict[str, str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid signature",
         ) from e
+
+    # Replay prevention: check if event was already processed
+    event_id = event.get("id")
+    if event_id:
+        now = time.time()
+        # Clean up expired entries
+        expired = [k for k, v in _processed_events.items() if now - v > _EVENT_TTL]
+        for k in expired:
+            del _processed_events[k]
+
+        if event_id in _processed_events:
+            logger.info("Duplicate webhook event %s, skipping", event_id)
+            return {"status": "already_processed"}
+        _processed_events[event_id] = now
 
     # Process the event
     event_type = event.get("type", "")

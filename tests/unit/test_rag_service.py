@@ -229,6 +229,67 @@ class TestSearchRobots:
             assert call_kwargs["filter"] == {"category": {"$eq": "Premium Combo"}}
 
 
+class TestGenerateEmbeddingNullGuard:
+    """Tests for generate_embedding null guard on empty response."""
+
+    @pytest.mark.asyncio
+    async def test_empty_embedding_response_raises_value_error(self) -> None:
+        """Test that empty embedding response raises ValueError, not IndexError."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = []  # Empty response
+        mock_client.embeddings.create.return_value = mock_response
+
+        service = RAGService(openai_client=mock_client)
+
+        with pytest.raises(ValueError, match="No embedding returned"):
+            await service.generate_embedding("test text")
+
+
+class TestSearchRobotsNullMatches:
+    """Tests for search_robots with None matches from Pinecone."""
+
+    @pytest.mark.asyncio
+    async def test_none_matches_returns_empty_list(self) -> None:
+        """Test that None matches from Pinecone returns empty list, no crash."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
+        mock_client.embeddings.create.return_value = mock_response
+
+        with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
+            mock_index = MagicMock()
+            mock_result = MagicMock()
+            mock_result.matches = None  # None matches
+            mock_index.query.return_value = mock_result
+            mock_get_index.return_value = mock_index
+
+            service = RAGService(openai_client=mock_client)
+            results = await service.search_robots("test query")
+
+            assert results == []
+
+    @pytest.mark.asyncio
+    async def test_none_matches_in_discovery_search_returns_empty_list(self) -> None:
+        """Test that None matches in discovery search returns empty list."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
+        mock_client.embeddings.create.return_value = mock_response
+
+        with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
+            mock_index = MagicMock()
+            mock_result = MagicMock()
+            mock_result.matches = None  # None matches
+            mock_index.query.return_value = mock_result
+            mock_get_index.return_value = mock_index
+
+            service = RAGService(openai_client=mock_client)
+            results = await service.search_robots_for_discovery("test context")
+
+            assert results == []
+
+
 class TestGetRelevantRobotsForContext:
     """Tests for get_relevant_robots_for_context method."""
 

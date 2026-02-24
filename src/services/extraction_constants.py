@@ -61,12 +61,12 @@ REQUIRED_QUESTIONS = [
     },
     {
         "key": "frequency",
-        "question": "How often do you clean the facility?",
+        "question": "How often do you clean the facility per week?",
         "chips": ["Daily", "3-4x per week", "Weekly", "Other"],
     },
     {
         "key": "duration",
-        "question": "How long does each cleaning session take?",
+        "question": "How long does each cleaning session take (in hours)?",
         "chips": ["1 hr", "2 hr", "4 hr", "Other"],
     },
     {

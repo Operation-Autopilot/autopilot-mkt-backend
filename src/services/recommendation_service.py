@@ -176,7 +176,14 @@ class RecommendationService:
                 return robots[:max_candidates]
 
             # Get full robot data for the candidates
-            robot_ids = [UUID(r["robot_id"]) for r in search_results if r.get("robot_id")]
+            robot_ids = []
+            for r in search_results:
+                rid = r.get("robot_id")
+                if rid:
+                    try:
+                        robot_ids.append(UUID(rid))
+                    except (ValueError, AttributeError):
+                        logger.warning("Skipping invalid robot_id: %s", rid)
             robots = await self.robot_catalog.get_robots_by_ids(robot_ids)
 
             # Add semantic scores to robot data

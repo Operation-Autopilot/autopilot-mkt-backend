@@ -1,6 +1,7 @@
 """Robot catalog business logic service."""
 
 import logging
+import re
 from collections import Counter
 from typing import Any
 from uuid import UUID
@@ -32,6 +33,20 @@ PRICE_RANGES = [
     {"value": "2000-5000", "label": "$2,000 - $5,000", "min": 2000, "max": 5000},
     {"value": "5000+", "label": "$5,000+", "min": 5000, "max": float("inf")},
 ]
+
+
+def _sanitize_filter_input(value: str) -> str:
+    """Sanitize user input for use in PostgREST filter expressions.
+
+    Strips characters that could be used for injection attacks.
+
+    Args:
+        value: Raw user input string.
+
+    Returns:
+        Sanitized string safe for filter expressions.
+    """
+    return re.sub(r"[^\w\s\-.,()]+", "", value)
 
 
 class RobotCatalogService:
@@ -100,15 +115,17 @@ class RobotCatalogService:
 
         # Apply category filter
         if filters.category:
-            query = query.ilike("category", f"%{filters.category}%")
+            safe_category = _sanitize_filter_input(filters.category)
+            query = query.ilike("category", f"%{safe_category}%")
 
         # Apply search filter
         if filters.search:
+            safe_search = _sanitize_filter_input(filters.search)
             # Search in name, category, and best_for
             query = query.or_(
-                f"name.ilike.%{filters.search}%,"
-                f"category.ilike.%{filters.search}%,"
-                f"best_for.ilike.%{filters.search}%"
+                f"name.ilike.%{safe_search}%,"
+                f"category.ilike.%{safe_search}%,"
+                f"best_for.ilike.%{safe_search}%"
             )
 
         # Execute query
@@ -145,11 +162,16 @@ class RobotCatalogService:
                 and self._get_robot_coverage(r) < max_coverage
             ]
 
-        # Total count before sorting
+        # Total count before sorting/pagination
         total = len(robots)
 
         # Apply sorting
         robots = self._sort_robots(robots, filters.sort)
+
+        # Apply pagination
+        start = (filters.page - 1) * filters.page_size
+        end = start + filters.page_size
+        robots = robots[start:end]
 
         return robots, total
 
