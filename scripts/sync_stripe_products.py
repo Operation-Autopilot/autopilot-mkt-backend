@@ -105,14 +105,29 @@ def get_robot_price_cents(robot: dict) -> int:
     return int(monthly_lease * 100)
 
 
-def create_stripe_product_and_price(robot: dict) -> tuple[str, str]:
-    """Create a Stripe product and recurring monthly price for a robot.
+def get_robot_purchase_price_cents(robot: dict) -> int:
+    """Get robot one-time purchase price in cents.
 
     Args:
-        robot: Robot data dictionary with name, monthly_lease, etc.
+        robot: Robot data dictionary.
 
     Returns:
-        tuple: (stripe_product_id, stripe_price_id)
+        int: Price in cents.
+    """
+    purchase_price = robot.get("purchase_price", 0)
+    if isinstance(purchase_price, (str, Decimal)):
+        purchase_price = float(Decimal(str(purchase_price)))
+    return int(purchase_price * 100)
+
+
+def create_stripe_product_and_prices(robot: dict) -> tuple[str, str, str]:
+    """Create a Stripe product with both recurring and one-time prices for a robot.
+
+    Args:
+        robot: Robot data dictionary with name, monthly_lease, purchase_price, etc.
+
+    Returns:
+        tuple: (stripe_product_id, stripe_lease_price_id, stripe_purchase_price_id)
     """
     stripe = get_stripe()
 
@@ -133,23 +148,35 @@ def create_stripe_product_and_price(robot: dict) -> tuple[str, str]:
     logger.info(f"Created Stripe product: {product.id} - {product_name}")
 
     # Create recurring monthly price
-    amount_cents = get_robot_price_cents(robot)
-
-    price = stripe.Price.create(
+    lease_amount_cents = get_robot_price_cents(robot)
+    lease_price = stripe.Price.create(
         product=product.id,
-        unit_amount=amount_cents,
+        unit_amount=lease_amount_cents,
         currency="usd",
         recurring={"interval": "month"},
         metadata={
             "robot_id": str(robot["id"]),
             "robot_sku": robot.get("sku", ""),
+            "price_type": "lease",
         },
     )
+    logger.info(f"Created Stripe lease price: {lease_price.id} - ${lease_amount_cents / 100}/month")
 
-    monthly_lease = amount_cents / 100
-    logger.info(f"Created Stripe price: {price.id} - ${monthly_lease}/month")
+    # Create one-time purchase price
+    purchase_amount_cents = get_robot_purchase_price_cents(robot)
+    purchase_price = stripe.Price.create(
+        product=product.id,
+        unit_amount=purchase_amount_cents,
+        currency="usd",
+        metadata={
+            "robot_id": str(robot["id"]),
+            "robot_sku": robot.get("sku", ""),
+            "price_type": "purchase",
+        },
+    )
+    logger.info(f"Created Stripe purchase price: {purchase_price.id} - ${purchase_amount_cents / 100} one-time")
 
-    return product.id, price.id
+    return product.id, lease_price.id, purchase_price.id
 
 
 def update_stripe_product(product_id: str, robot: dict) -> None:
@@ -178,7 +205,9 @@ def update_stripe_product(product_id: str, robot: dict) -> None:
     logger.info(f"Updated Stripe product: {product_id} - {product_name}")
 
 
-def create_new_price_for_product(product_id: str, robot: dict, old_price_id: str | None = None) -> str:
+def create_new_price_for_product(
+    product_id: str, robot: dict, old_price_id: str | None = None, price_type: str = "lease"
+) -> str:
     """Create a new price for an existing product.
 
     Stripe prices are immutable, so we create a new one and optionally archive the old one.
@@ -187,28 +216,39 @@ def create_new_price_for_product(product_id: str, robot: dict, old_price_id: str
         product_id: Stripe product ID.
         robot: Robot data dictionary.
         old_price_id: Optional old price ID to archive.
+        price_type: "lease" for recurring monthly, "purchase" for one-time.
 
     Returns:
         str: New Stripe price ID.
     """
     stripe = get_stripe()
 
-    amount_cents = get_robot_price_cents(robot)
+    if price_type == "purchase":
+        amount_cents = get_robot_purchase_price_cents(robot)
+        recurring = None
+        label = "one-time"
+    else:
+        amount_cents = get_robot_price_cents(robot)
+        recurring = {"interval": "month"}
+        label = "/month"
 
     # Create new price
-    price = stripe.Price.create(
-        product=product_id,
-        unit_amount=amount_cents,
-        currency="usd",
-        recurring={"interval": "month"},
-        metadata={
+    price_params: dict = {
+        "product": product_id,
+        "unit_amount": amount_cents,
+        "currency": "usd",
+        "metadata": {
             "robot_id": str(robot["id"]),
             "robot_sku": robot.get("sku", ""),
+            "price_type": price_type,
         },
-    )
+    }
+    if recurring:
+        price_params["recurring"] = recurring
 
-    monthly_lease = amount_cents / 100
-    logger.info(f"Created new Stripe price: {price.id} - ${monthly_lease}/month")
+    price = stripe.Price.create(**price_params)
+
+    logger.info(f"Created new Stripe price: {price.id} - ${amount_cents / 100} {label}")
 
     # Archive old price if provided
     if old_price_id:
@@ -240,10 +280,11 @@ async def sync_all_robots_to_stripe() -> dict:
     # Determine which columns to use based on Stripe key
     is_test_mode = settings.is_stripe_test_mode
     product_col = "stripe_product_id_test" if is_test_mode else "stripe_product_id"
-    price_col = "stripe_lease_price_id_test" if is_test_mode else "stripe_lease_price_id"
+    lease_price_col = "stripe_lease_price_id_test" if is_test_mode else "stripe_lease_price_id"
+    purchase_price_col = "stripe_purchase_price_id_test" if is_test_mode else "stripe_purchase_price_id"
     mode_label = "TEST" if is_test_mode else "PRODUCTION"
 
-    logger.info(f"Running in {mode_label} mode - writing to {product_col}, {price_col}")
+    logger.info(f"Running in {mode_label} mode - writing to {product_col}, {lease_price_col}, {purchase_price_col}")
 
     # Get all robots (including inactive for sync purposes)
     robots = await service.list_robots(active_only=False)
@@ -260,55 +301,76 @@ async def sync_all_robots_to_stripe() -> dict:
         robot_id = robot["id"]
         robot_name = robot.get("name", "Unknown")
         current_product_id = robot.get(product_col, "") or ""
-        current_price_id = robot.get(price_col, "") or ""
-        expected_price_cents = get_robot_price_cents(robot)
+        current_lease_price_id = robot.get(lease_price_col, "") or ""
+        current_purchase_price_id = robot.get(purchase_price_col, "") or ""
+        expected_lease_cents = get_robot_price_cents(robot)
+        expected_purchase_cents = get_robot_purchase_price_cents(robot)
 
         try:
             # Check if we need to create Stripe products
             needs_create = (
                 is_placeholder_stripe_id(current_product_id) or
-                is_placeholder_stripe_id(current_price_id) or
+                is_placeholder_stripe_id(current_lease_price_id) or
                 not current_product_id or
-                not current_price_id
+                not current_lease_price_id
             )
 
             if not needs_create:
-                # Verify the Stripe IDs actually exist and check if price matches
+                # Verify the Stripe IDs actually exist and check if prices match
                 try:
                     stripe_product = stripe.Product.retrieve(current_product_id)
-                    stripe_price = stripe.Price.retrieve(current_price_id)
+                    stripe_lease_price = stripe.Price.retrieve(current_lease_price_id)
 
-                    # Check if price amount matches
-                    stripe_price_cents = stripe_price.unit_amount
+                    db_update = {}
 
-                    if stripe_price_cents != expected_price_cents:
-                        # Price mismatch - need to create new price
+                    # Check lease price
+                    if stripe_lease_price.unit_amount != expected_lease_cents:
                         logger.warning(
-                            f"{robot_name}: Price mismatch! "
-                            f"DB: ${expected_price_cents/100}, Stripe: ${stripe_price_cents/100}. "
+                            f"{robot_name}: Lease price mismatch! "
+                            f"DB: ${expected_lease_cents/100}, Stripe: ${stripe_lease_price.unit_amount/100}. "
                             f"Creating new price..."
                         )
-
-                        # Update product metadata/description
-                        update_stripe_product(current_product_id, robot)
-
-                        # Create new price and archive old one
-                        new_price_id = create_new_price_for_product(
-                            current_product_id, robot, current_price_id
+                        new_lease_id = create_new_price_for_product(
+                            current_product_id, robot, current_lease_price_id, price_type="lease"
                         )
-
-                        # Update database with new price ID
-                        client.table("robot_catalog").update({
-                            price_col: new_price_id,
-                        }).eq("id", robot_id).execute()
-
+                        db_update[lease_price_col] = new_lease_id
                         price_updated += 1
+
+                    # Check purchase price
+                    if current_purchase_price_id and expected_purchase_cents > 0:
+                        try:
+                            stripe_purchase_price = stripe.Price.retrieve(current_purchase_price_id)
+                            if stripe_purchase_price.unit_amount != expected_purchase_cents:
+                                logger.warning(
+                                    f"{robot_name}: Purchase price mismatch! Creating new price..."
+                                )
+                                new_purchase_id = create_new_price_for_product(
+                                    current_product_id, robot, current_purchase_price_id, price_type="purchase"
+                                )
+                                db_update[purchase_price_col] = new_purchase_id
+                                price_updated += 1
+                        except stripe.error.InvalidRequestError:
+                            # Purchase price doesn't exist yet, create it
+                            new_purchase_id = create_new_price_for_product(
+                                current_product_id, robot, price_type="purchase"
+                            )
+                            db_update[purchase_price_col] = new_purchase_id
+                    elif not current_purchase_price_id and expected_purchase_cents > 0:
+                        # No purchase price yet, create one
+                        new_purchase_id = create_new_price_for_product(
+                            current_product_id, robot, price_type="purchase"
+                        )
+                        db_update[purchase_price_col] = new_purchase_id
+
+                    # Update product metadata/description
+                    update_stripe_product(current_product_id, robot)
+
+                    if db_update:
+                        client.table("robot_catalog").update(db_update).eq("id", robot_id).execute()
                         updated += 1
-                        logger.info(f"Updated {robot_name} with new price ID: {new_price_id}")
+                        logger.info(f"Updated {robot_name} prices")
                     else:
-                        # Price matches - just update product info if needed
-                        update_stripe_product(current_product_id, robot)
-                        logger.info(f"Verified {robot_name} - price matches (${expected_price_cents/100}/month)")
+                        logger.info(f"Verified {robot_name} - prices match")
                         skipped += 1
 
                     continue
@@ -319,18 +381,19 @@ async def sync_all_robots_to_stripe() -> dict:
                     needs_create = True
 
             if needs_create:
-                # Create Stripe product and price
-                product_id, price_id = create_stripe_product_and_price(robot)
+                # Create Stripe product and both prices
+                product_id, lease_price_id, purchase_price_id = create_stripe_product_and_prices(robot)
 
                 # Update database with real Stripe IDs
                 client.table("robot_catalog").update({
                     product_col: product_id,
-                    price_col: price_id,
+                    lease_price_col: lease_price_id,
+                    purchase_price_col: purchase_price_id,
                 }).eq("id", robot_id).execute()
 
                 created += 1
                 updated += 1
-                logger.info(f"Created and updated {robot_name} with Stripe IDs: {product_id}, {price_id}")
+                logger.info(f"Created and updated {robot_name} with Stripe IDs: {product_id}, lease={lease_price_id}, purchase={purchase_price_id}")
 
         except Exception as e:
             failed += 1

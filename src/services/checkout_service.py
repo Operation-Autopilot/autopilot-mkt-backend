@@ -35,6 +35,7 @@ class CheckoutService:
         session_id: UUID | None = None,
         customer_email: str | None = None,
         is_test_account: bool | None = None,
+        payment_type: str = "lease",
     ) -> dict[str, Any]:
         """Create a Stripe Checkout Session and pending order.
 
@@ -71,11 +72,19 @@ class CheckoutService:
         if not robot.get("active", False):
             raise ValueError("Product is no longer available")
 
-        # Calculate total in cents
-        monthly_lease = robot.get("monthly_lease", 0)
-        if isinstance(monthly_lease, str):
-            monthly_lease = Decimal(monthly_lease)
-        total_cents = int(monthly_lease * 100)
+        # Calculate total and select price based on payment type
+        if payment_type == "purchase":
+            price_value = robot.get("purchase_price", 0)
+            stripe_price_id = robot.get("stripe_purchase_price_id", "")
+            if not stripe_price_id:
+                raise ValueError("One-time purchase is not configured for this product")
+        else:
+            price_value = robot.get("monthly_lease", 0)
+            stripe_price_id = robot.get("stripe_lease_price_id", "")
+
+        if isinstance(price_value, str):
+            price_value = Decimal(price_value)
+        total_cents = int(price_value * 100)
 
         # Create line items for the order
         line_items = [
@@ -84,7 +93,7 @@ class CheckoutService:
                 "product_name": robot["name"],
                 "quantity": 1,
                 "unit_amount_cents": total_cents,
-                "stripe_price_id": robot["stripe_lease_price_id"],
+                "stripe_price_id": stripe_price_id,
             }
         ]
 
@@ -94,6 +103,7 @@ class CheckoutService:
             "session_id": str(session_id) if session_id else None,
             "stripe_checkout_session_id": None,  # Will update after Stripe call
             "status": "pending",
+            "payment_type": payment_type,
             "line_items": line_items,
             "total_cents": total_cents,
             "currency": "usd",
@@ -107,12 +117,13 @@ class CheckoutService:
 
         try:
             # Create Stripe Checkout Session
+            stripe_mode = "payment" if payment_type == "purchase" else "subscription"
             checkout_params: dict[str, Any] = {
-                "mode": "subscription",
+                "mode": stripe_mode,
                 "payment_method_types": ["card", "us_bank_account"],
                 "line_items": [
                     {
-                        "price": robot["stripe_lease_price_id"],
+                        "price": stripe_price_id,
                         "quantity": 1,
                     }
                 ],
@@ -122,6 +133,7 @@ class CheckoutService:
                     "order_id": str(order_id),
                     "session_id": str(session_id) if session_id else "",
                     "is_test_mode": "true" if use_test_mode else "false",
+                    "payment_type": payment_type,
                 },
             }
 
@@ -195,13 +207,18 @@ class CheckoutService:
             customer_email = customer_details.get("email")
 
         payment_status = session.get("payment_status", "")
+        metadata = session.get("metadata", {})
+        is_purchase = metadata.get("payment_type") == "purchase"
+
+        # For purchases, use payment_intent; for leases, use subscription
+        stripe_ref_id = session.get("payment_intent") if is_purchase else session.get("subscription")
 
         if payment_status == "paid":
             # Card or instant payment — funds available immediately
             update_data: dict[str, Any] = {
                 "status": "completed",
                 "stripe_customer_id": session.get("customer"),
-                "stripe_subscription_id": session.get("subscription"),
+                "stripe_subscription_id": stripe_ref_id,
                 "customer_email": customer_email,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -211,7 +228,7 @@ class CheckoutService:
             update_data = {
                 "status": "payment_pending",
                 "stripe_customer_id": session.get("customer"),
-                "stripe_subscription_id": session.get("subscription"),
+                "stripe_subscription_id": stripe_ref_id,
                 "customer_email": customer_email,
             }
             log_status = "payment_pending"

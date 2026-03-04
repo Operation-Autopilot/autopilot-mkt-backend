@@ -2,9 +2,12 @@
 -- Stores uploaded floor plans with GPT-4o extracted features and cost estimates
 
 -- Status enum for tracking analysis progress
-CREATE TYPE floor_plan_status AS ENUM ('pending', 'processing', 'completed', 'failed');
+DO $$ BEGIN
+    CREATE TYPE floor_plan_status AS ENUM ('pending', 'processing', 'completed', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE floor_plan_analyses (
+CREATE TABLE IF NOT EXISTS floor_plan_analyses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     -- Ownership (supports both auth systems)
@@ -67,15 +70,23 @@ COMMENT ON COLUMN floor_plan_analyses.cost_estimate IS
 }';
 
 -- Indexes for common queries
-CREATE INDEX idx_floor_plan_analyses_profile_id ON floor_plan_analyses(profile_id);
-CREATE INDEX idx_floor_plan_analyses_session_id ON floor_plan_analyses(session_id);
-CREATE INDEX idx_floor_plan_analyses_status ON floor_plan_analyses(status);
-CREATE INDEX idx_floor_plan_analyses_created_at ON floor_plan_analyses(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_floor_plan_analyses_profile_id ON floor_plan_analyses(profile_id);
+CREATE INDEX IF NOT EXISTS idx_floor_plan_analyses_session_id ON floor_plan_analyses(session_id);
+CREATE INDEX IF NOT EXISTS idx_floor_plan_analyses_status ON floor_plan_analyses(status);
+CREATE INDEX IF NOT EXISTS idx_floor_plan_analyses_created_at ON floor_plan_analyses(created_at DESC);
 
 -- Enable Row Level Security
 ALTER TABLE floor_plan_analyses ENABLE ROW LEVEL SECURITY;
 
--- Policy: Users can view their own floor plan analyses
+-- Policies (drop + recreate for idempotency since CREATE POLICY has no IF NOT EXISTS)
+DO $$ BEGIN
+    DROP POLICY IF EXISTS "Users can view own floor plan analyses" ON floor_plan_analyses;
+    DROP POLICY IF EXISTS "Users can insert own floor plan analyses" ON floor_plan_analyses;
+    DROP POLICY IF EXISTS "Users can update own floor plan analyses" ON floor_plan_analyses;
+    DROP POLICY IF EXISTS "Users can delete own floor plan analyses" ON floor_plan_analyses;
+    DROP POLICY IF EXISTS "Service role full access to floor_plan_analyses" ON floor_plan_analyses;
+END $$;
+
 CREATE POLICY "Users can view own floor plan analyses"
     ON floor_plan_analyses FOR SELECT
     USING (
@@ -86,7 +97,6 @@ CREATE POLICY "Users can view own floor plan analyses"
         )
     );
 
--- Policy: Users can insert their own floor plan analyses
 CREATE POLICY "Users can insert own floor plan analyses"
     ON floor_plan_analyses FOR INSERT
     WITH CHECK (
@@ -97,7 +107,6 @@ CREATE POLICY "Users can insert own floor plan analyses"
         )
     );
 
--- Policy: Users can update their own floor plan analyses
 CREATE POLICY "Users can update own floor plan analyses"
     ON floor_plan_analyses FOR UPDATE
     USING (
@@ -108,7 +117,6 @@ CREATE POLICY "Users can update own floor plan analyses"
         )
     );
 
--- Policy: Users can delete their own floor plan analyses
 CREATE POLICY "Users can delete own floor plan analyses"
     ON floor_plan_analyses FOR DELETE
     USING (
@@ -119,12 +127,12 @@ CREATE POLICY "Users can delete own floor plan analyses"
         )
     );
 
--- Policy: Service role has full access
 CREATE POLICY "Service role full access to floor_plan_analyses"
     ON floor_plan_analyses FOR ALL
     USING (auth.role() = 'service_role');
 
--- Trigger for auto-updating updated_at
+-- Trigger (drop + recreate for idempotency)
+DROP TRIGGER IF EXISTS update_floor_plan_analyses_updated_at ON floor_plan_analyses;
 CREATE TRIGGER update_floor_plan_analyses_updated_at
     BEFORE UPDATE ON floor_plan_analyses
     FOR EACH ROW

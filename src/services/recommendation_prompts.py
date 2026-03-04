@@ -198,7 +198,7 @@ def format_robots_context(robots: list[dict]) -> str:
         lines.append(f"   Best For: {best_for}")
         lines.append(f"   Cleaning Modes: {', '.join(modes) if modes else 'N/A'}")
         lines.append(f"   Supported Surfaces: {', '.join(surfaces) if surfaces else 'All surfaces'}")
-        lines.append(f"   Monthly Lease: ${float(monthly_lease):,.0f}")
+        lines.append(f"   Monthly Cost: ${float(monthly_lease):,.0f}")
         lines.append(f"   Time Efficiency: {float(time_efficiency) * 100:.0f}%")
         if key_reasons:
             lines.append(f"   Key Features: {'; '.join(key_reasons[:3])}")
