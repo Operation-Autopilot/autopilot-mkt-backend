@@ -90,6 +90,7 @@ class RobotResponse(BaseModel):
 
     id: UUID = Field(description="Robot unique identifier")
     name: str = Field(description="Robot name")
+    manufacturer: str | None = Field(default=None, description="Robot manufacturer")
     category: str = Field(description="Robot category")
     best_for: str | None = Field(default=None, description="Best use case")
     modes: list[str] = Field(default_factory=list, description="Cleaning modes")

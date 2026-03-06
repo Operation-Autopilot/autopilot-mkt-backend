@@ -24,8 +24,10 @@ from src.api.routes import (
     sessions,
     webhooks,
 )
+from src.api.routes.admin import router as admin_router
 from src.api.routes.checkout import orders_router, router as checkout_router
 from src.api.routes.roi import roi_router
+from src.api.routes.shares import router as shares_router
 from src.core.config import get_settings
 from src.core.rate_limiter import init_rate_limiter, shutdown_rate_limiter
 from src.core.stripe import configure_stripe
@@ -123,8 +125,11 @@ def create_app() -> FastAPI:
     # Add request size limit middleware (rejects oversized requests early)
     app.add_middleware(BaseHTTPMiddleware, dispatch=request_size_limit_middleware)
 
-    # Mount health routes at root level (no prefix)                                                                                          
+    # Mount health routes at root level (no prefix)
     app.include_router(health.router)
+
+    # Mount public share routes at root level (no /api/v1 prefix)
+    app.include_router(shares_router)
 
     # Create API v1 router for versioned endpoints
     api_v1_router = APIRouter(prefix="/api/v1")
@@ -159,6 +164,9 @@ def create_app() -> FastAPI:
 
     # Webhook routes
     api_v1_router.include_router(webhooks.router)
+
+    # Admin routes (HubSpot OAuth, Fireflies, share creation)
+    api_v1_router.include_router(admin_router)
 
     app.include_router(api_v1_router)
 
