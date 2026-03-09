@@ -1303,16 +1303,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                 )
                 logger.debug("Fetched fresh recommendations for discovery context")
 
-                # Cache recommendations for authenticated users (fire and forget)
-                if profile_id and discovery_service and recommendations:
-                    try:
-                        await discovery_service.set_cached_recommendations(
-                            profile_id,
-                            current_answers,
-                            recommendations.model_dump(mode="json"),
-                        )
-                    except Exception as cache_err:
-                        logger.warning("Failed to cache recommendations: %s", cache_err)
+                # NOTE: Do NOT cache mid-discovery recommendations here.
+                # The ROI page should always generate fresh recommendations
+                # based on the final complete answer set, not a partial one
+                # from mid-discovery. Caching partial results caused the #1
+                # recommendation to differ between chat and ROI page.
 
                 return recommendations
             except Exception as e:
