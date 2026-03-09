@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 HUBSPOT_AUTH_URL = "https://app.hubspot.com/oauth/authorize"
 HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token"
 HUBSPOT_API_BASE = "https://api.hubapi.com"
-HUBSPOT_SCOPES = "crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read crm.objects.meetings.read"
+HUBSPOT_SCOPES = "crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read crm.objects.leads.read scheduler.meetings.meeting-link.read oauth"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ async def get_upcoming_meetings(profile_id: str) -> list[dict[str, Any]]:
 
     # Use CRM search to find upcoming meetings
     now_ms = int(time.time() * 1000)
-    horizon_ms = now_ms + 48 * 3600 * 1000
+    horizon_ms = now_ms + 7 * 24 * 3600 * 1000
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
