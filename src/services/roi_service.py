@@ -250,11 +250,9 @@ class ROIService:
         Returns:
             Confidence level string.
         """
-        # High confidence if we have specific spend and hours data
         if inputs.manual_monthly_spend > 0 and inputs.manual_monthly_hours > 0:
-            # Check if values seem reasonable (not defaults)
-            if inputs.manual_monthly_spend not in [3500.0] and inputs.manual_monthly_hours not in [60.0]:
-                return "high"
+            return "high"
+        if inputs.manual_monthly_spend > 0 or inputs.manual_monthly_hours > 0:
             return "medium"
         return "low"
 
@@ -409,7 +407,7 @@ class ROIService:
         budget_reason = None
 
         if monthly_spend:
-            budget_mid = SPEND_MAP.get(monthly_spend, 4330)
+            budget_mid = SPEND_MAP.get(monthly_spend, 3500.0)
 
             if robot_monthly_lease <= budget_mid * 0.5:
                 # Robot is well under budget - good value

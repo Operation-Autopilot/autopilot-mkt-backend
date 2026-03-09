@@ -12,7 +12,7 @@ from src.services.profile_service import ProfileService
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
 # Minimum required questions answered to be ready for ROI (4 of 6)
-MIN_QUESTIONS_FOR_ROI = 4
+MIN_QUESTIONS_FOR_ROI = 5
 
 
 def compute_ready_for_roi(answers: dict, has_company: bool = False) -> bool:
