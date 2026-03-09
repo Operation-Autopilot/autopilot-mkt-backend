@@ -4,26 +4,17 @@ Autopilot Marketplace uses Supabase Auth with JWT tokens for authentication. Thi
 
 ## Authentication Flow
 
+<AuthFlow />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌──────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Browser  │────▶│  FastAPI     │────▶│  Supabase Auth  │
-│           │     │  /auth/*     │     │                 │
-│  1. Login │     │  2. Forward  │     │  3. Verify      │
-│  request  │     │  credentials │     │  credentials    │
-│           │◀────│◀─────────────│◀────│  4. Return JWT  │
-│  5. Store │     │              │     │                 │
-│  token    │     │              │     │                 │
-└──────────┘     └──────────────┘     └─────────────────┘
-       │
-       │  Subsequent requests:
-       │  Authorization: Bearer <jwt>
-       ▼
-┌──────────────┐     ┌─────────────────┐
-│  FastAPI     │────▶│  Supabase       │
-│  Protected   │     │  auth.get_user()│
-│  Route       │     │  Verify JWT     │
-└──────────────┘     └─────────────────┘
+Browser → FastAPI /auth/* → Supabase Auth (verify, return JWT) → Store token
+Subsequent: Bearer JWT → FastAPI Protected Route → Supabase auth.get_user()
 ```
+
+</details>
 
 1. The frontend sends credentials to the backend auth endpoints.
 2. The backend forwards them to Supabase Auth.
@@ -79,30 +70,17 @@ The Supabase Python client stores the auth session internally. When you call `au
 
 If this happens on the singleton client, subsequent database operations would use the user's token instead of the service role key. This causes **RLS policy violations** -- the service role key bypasses RLS, but a user JWT is subject to RLS policies that may not permit the operation the backend needs to perform.
 
-```
-PROBLEM: Using one client for everything
+<TwoClientPattern />
 
-  sign_in(user_credentials)
-      │
-      ▼
-  client.auth.set_session(user_jwt)
-      │
-      ▼
-  client.headers["Authorization"] = "Bearer user_jwt"  ← OVERWRITTEN
-      │
-      ▼
-  client.table("admin_data").select("*")  ← FAILS: RLS denies access
-```
+<details>
+<summary>Text fallback</summary>
 
 ```
-SOLUTION: Two-client pattern
-
-  Singleton client                    Fresh auth client
-  ─────────────────                   ──────────────────
-  headers: service_role_key           sign_in(user_creds)
-  table("admin_data").select("*")     → returns JWT
-  → WORKS: service role bypasses RLS  → client discarded
+PROBLEM: sign_in → set_session → header OVERWRITTEN → RLS denies access
+SOLUTION: Singleton client (service_role_key, bypasses RLS) + Fresh auth client (sign_in → JWT → discarded)
 ```
+
+</details>
 
 ## Supabase Key Format
 

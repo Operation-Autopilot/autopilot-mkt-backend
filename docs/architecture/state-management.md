@@ -4,30 +4,16 @@ The frontend uses a combination of React Context for client-side state and TanSt
 
 ## Architecture Overview
 
+<StateProviders />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌──────────────────────────────────────────────────────┐
-│                   React Component Tree                │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐  │
-│  │              QueryClientProvider                 │  │
-│  │  (TanStack React Query - server state cache)    │  │
-│  │                                                  │  │
-│  │  ┌───────────────────────────────────────────┐   │  │
-│  │  │            AuthProvider                    │   │  │
-│  │  │  (Supabase auth, user object, tokens)     │   │  │
-│  │  │                                            │   │  │
-│  │  │  ┌─────────────────────────────────────┐   │   │  │
-│  │  │  │         SessionProvider              │   │   │  │
-│  │  │  │  (phase, answers, selectedRobotId)  │   │   │  │
-│  │  │  │                                      │   │   │  │
-│  │  │  │        ┌──────────────┐              │   │   │  │
-│  │  │  │        │  App Routes  │              │   │   │  │
-│  │  │  │        └──────────────┘              │   │   │  │
-│  │  │  └─────────────────────────────────────┘   │   │  │
-│  │  └───────────────────────────────────────────┘   │  │
-│  └─────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────┘
+QueryClientProvider → AuthProvider → SessionProvider → App Routes
 ```
+
+</details>
 
 ## React Context Providers
 

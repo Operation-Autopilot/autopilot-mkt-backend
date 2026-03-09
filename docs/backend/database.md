@@ -8,18 +8,17 @@ The backend uses **Supabase PostgreSQL** as its primary database, with **Row Lev
 
 ## Schema Overview
 
-```
-profiles
-├── companies (via company_members join)
-│   └── company_members
-├── conversations
-│   └── messages
-├── sessions
-├── discovery_profiles
-└── orders
+<DatabaseSchema />
 
+<details>
+<summary>Text fallback</summary>
+
+```
+profiles → companies (via company_members), conversations → messages, sessions, discovery_profiles, orders
 robots (standalone catalog)
 ```
+
+</details>
 
 ## Tables
 

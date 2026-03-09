@@ -8,14 +8,16 @@ The Autopilot Marketplace guides users through a three-phase journey: **Discover
 
 ## Phase Overview
 
+<PhaseSystem />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-Discovery  ──>  ROI  ──>  Greenlight
-   │              │            │
-   │              │            │
-   v              v            v
- Browse &      Analyze      Configure &
- Profile       Savings       Purchase
+Discovery (Browse & Profile) → ROI (Analyze Savings) → Greenlight (Configure & Purchase)
 ```
+
+</details>
 
 Phase transitions are **triggered by the AI agent conversation flow**, not by manual user navigation. The agent determines when a user has completed enough of a phase to advance and sends a phase transition message that the frontend interprets.
 

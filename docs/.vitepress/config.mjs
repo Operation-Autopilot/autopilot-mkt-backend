@@ -146,5 +146,8 @@ export default defineConfig({
     server: {
       port: 5174,
     },
+    ssr: {
+      noExternal: ['@vue-flow/core', '@vue-flow/background', '@vue-flow/controls', '@vue-flow/minimap'],
+    },
   },
 })

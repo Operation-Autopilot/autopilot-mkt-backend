@@ -8,24 +8,16 @@ The backend uses **Retrieval-Augmented Generation (RAG)** to inject relevant pro
 
 ## Architecture
 
+<RagPipeline />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-User Message
-    │
-    ▼
-Context Reconstruction (message history)
-    │
-    ▼
-OpenAI Embeddings API ──► Text → Vector
-    │
-    ▼
-Pinecone Similarity Search ──► Top-K product matches
-    │
-    ▼
-Inject product context into GPT-4o system prompt
-    │
-    ▼
-GPT-4o generates grounded response
+User Message → Context Reconstruction → OpenAI Embeddings → Pinecone Search → Inject context → GPT-4o response
 ```
+
+</details>
 
 ## RAG Service
 

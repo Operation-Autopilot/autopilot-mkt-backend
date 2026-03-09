@@ -112,36 +112,16 @@ CORS middleware is configured to allow requests from the frontend origin, with c
 
 ## Request/Response Flow
 
+<RequestPipeline />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-Client Request
-    │
-    ▼
-┌──────────────┐
-│  Middleware   │  ← CORS, error handling
-│              │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│   Router     │  ← Route matching, input validation
-│              │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│  Depends()   │  ← Auth verification, client injection
-│              │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐
-│  Service     │  ← Business logic (see Service Layer)
-│              │
-└──────┬───────┘
-       │
-       ▼
-  JSON Response
+Client Request → Middleware (CORS) → Router → Depends() (Auth) → Service → JSON Response
 ```
+
+</details>
 
 ## Adding a New Route
 

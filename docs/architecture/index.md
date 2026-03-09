@@ -4,59 +4,17 @@ Autopilot Marketplace is an agent-led procurement platform that guides buyers th
 
 ## Architecture Diagram
 
+<SystemArchitecture />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Browser                                    │
-│                                                                     │
-│   ┌─────────────────────────────────────────────────────────────┐   │
-│   │              React 18 SPA (TypeScript)                      │   │
-│   │                                                             │   │
-│   │  React Query Cache ◄──► React Context (Session, Auth)       │   │
-│   └──────────────────────────┬──────────────────────────────────┘   │
-│                              │ HTTPS (REST JSON)                    │
-└──────────────────────────────┼──────────────────────────────────────┘
-                               │
-                               ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     FastAPI Application Server                       │
-│                                                                      │
-│  ┌────────────┐   ┌────────────────┐   ┌──────────────────────────┐ │
-│  │  Routers   │──▶│  Service Layer  │──▶│  External Service Clients│ │
-│  │  (routes/) │   │  (services/)    │   │                          │ │
-│  └────────────┘   └────────────────┘   └──────────┬───────────────┘ │
-│        │                                           │                 │
-│  ┌─────▼──────┐                                    │                 │
-│  │ Middleware  │                                    │                 │
-│  │ Auth/Error  │                                    │                 │
-│  └────────────┘                                    │                 │
-└────────────────────────────────────────────────────┼─────────────────┘
-                                                     │
-                    ┌────────────────────────────────┼──────────┐
-                    │                                │          │
-                    ▼                                ▼          ▼
-     ┌──────────────────────┐  ┌───────────────┐  ┌────────────────┐
-     │  Supabase PostgreSQL  │  │  Pinecone     │  │  OpenAI        │
-     │                       │  │  Vector DB    │  │  GPT-4o        │
-     │  - User profiles      │  │               │  │                │
-     │  - Sessions           │  │  - Product    │  │  - Conversation│
-     │  - Companies          │  │    embeddings │  │    agent       │
-     │  - Conversations      │  │  - Semantic   │  │  - Profile     │
-     │  - Robot catalog      │  │    search     │  │    extraction  │
-     │  - Floor plans        │  │               │  │  - RAG context │
-     │  - RLS policies       │  │               │  │                │
-     └──────────────────────┘  └───────────────┘  └────────────────┘
-                                                          │
-                                                   ┌──────┘
-                                                   ▼
-                                          ┌────────────────┐
-                                          │  Stripe        │
-                                          │                │
-                                          │  - Checkout    │
-                                          │    sessions    │
-                                          │  - Payments    │
-                                          │  - Webhooks    │
-                                          └────────────────┘
+Browser (React 18 SPA) → FastAPI (Routers → Services → External Clients)
+  → Supabase PostgreSQL, Pinecone Vector DB, OpenAI GPT-4o, Stripe
 ```
+
+</details>
 
 ## Component Summary
 

@@ -73,6 +73,11 @@ Key conventions:
 
 Services frequently compose each other to implement complex workflows. For example, processing a conversation message involves multiple services:
 
+<ServiceComposition />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
 ConversationService
     ├── RagService              (search product catalog)
@@ -80,6 +85,8 @@ ConversationService
     ├── ProfileExtractionService (extract structured data)
     └── SessionService          (update session phase)
 ```
+
+</details>
 
 Services receive collaborators through initialization or construct them internally:
 

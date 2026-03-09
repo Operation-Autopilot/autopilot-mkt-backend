@@ -6,14 +6,16 @@ This page describes how data flows through the Autopilot Marketplace system, fro
 
 A session represents one buyer's journey through the procurement process. Sessions move through three phases in strict order:
 
+<SessionLifecycle />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌─────────────┐      ┌─────────┐      ┌──────────────┐
-│  Discovery   │─────▶│   ROI   │─────▶│  Greenlight   │
-│              │      │         │      │               │
-│  Needs       │      │  Cost   │      │  Purchase     │
-│  assessment  │      │  analysis│     │  decision     │
-└─────────────┘      └─────────┘      └──────────────┘
+Discovery (Needs assessment) → ROI (Cost analysis) → Greenlight (Purchase decision)
 ```
+
+</details>
 
 ### Phase 1: Discovery
 
@@ -67,94 +69,31 @@ The buyer proceeds to purchase.
 
 The conversation flow is the core interaction loop. Here is the detailed data flow for a single message exchange:
 
+<ConversationFlow />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌──────────┐
-│  User    │
-│  types   │
-│  message │
-└────┬─────┘
-     │
-     ▼
-┌──────────────────────────────────────────────────────────┐
-│  Frontend: useConversation.sendMessage(message)          │
-│  POST /conversations/{session_id}/messages               │
-└────┬─────────────────────────────────────────────────────┘
-     │
-     ▼
-┌──────────────────────────────────────────────────────────┐
-│  Router: conversations.py                                │
-│  Validates input, injects auth + supabase                │
-└────┬─────────────────────────────────────────────────────┘
-     │
-     ▼
-┌──────────────────────────────────────────────────────────┐
-│  ConversationService.create(session_id, message)         │
-│                                                          │
-│  Step 1: Store user message in conversations table       │
-│                                                          │
-│  Step 2: Reconstruct context                             │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  Load conversation history (last N messages)       │  │
-│  │  Load extracted profile (discovery_profiles table) │  │
-│  │  Load session metadata (current phase, robot)      │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  Step 3: RAG product search                              │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  RagService.search(query=message, context=profile) │  │
-│  │  → Embed query with OpenAI                         │  │
-│  │  → Search Pinecone index (top 5 matches)           │  │
-│  │  → Return product metadata                         │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  Step 4: GPT-4o agent generation                         │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  AgentService.generate(context, products)          │  │
-│  │  → Build system prompt with:                       │  │
-│  │      - Agent persona and instructions              │  │
-│  │      - Extracted buyer profile                     │  │
-│  │      - RAG product results                         │  │
-│  │      - Current session phase                       │  │
-│  │  → Send to GPT-4o                                  │  │
-│  │  → Parse response                                  │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  Step 5: Profile extraction                              │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  ProfileExtractionService.extract(session_id, msgs)│  │
-│  │  → Send conversation to GPT-4o with extraction     │  │
-│  │    schema                                          │  │
-│  │  → Parse structured JSON output                    │  │
-│  │  → Upsert into discovery_profiles table            │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  Step 6: Store assistant message                         │
-│  Step 7: Return response to router                       │
-└────┬─────────────────────────────────────────────────────┘
-     │
-     ▼
-┌──────────────────────────────────────────────────────────┐
-│  Frontend: React Query cache invalidated                 │
-│  Conversation history re-fetched and rendered            │
-└──────────────────────────────────────────────────────────┘
+User message → Frontend POST → Router → ConversationService
+  → Store msg → Context → RAG search + GPT-4o agent → Profile extraction
+  → Store response → React Query invalidated → UI render
 ```
+
+</details>
 
 ## Checkout Flow
 
+<CheckoutFlow />
+
+<details>
+<summary>Text fallback</summary>
+
 ```
-┌────────────┐     ┌──────────────┐     ┌─────────┐     ┌──────────┐
-│  Frontend   │────▶│  CheckoutSvc │────▶│  Stripe │────▶│  Webhook │
-│  initiate   │     │  create      │     │  hosted │     │  confirm │
-│  checkout   │     │  session     │     │  page   │     │  payment │
-└────────────┘     └──────────────┘     └─────────┘     └──────┬───┘
-                                                               │
-                                                               ▼
-                                                        ┌──────────┐
-                                                        │  Update  │
-                                                        │  order   │
-                                                        │  status  │
-                                                        └──────────┘
+Frontend → CheckoutService → Stripe hosted page → Webhook → Update order status
 ```
+
+</details>
 
 1. Frontend calls `POST /checkout/create-session` with robot and session IDs.
 2. `CheckoutService` creates a Stripe Checkout Session with line items, success/cancel URLs.
