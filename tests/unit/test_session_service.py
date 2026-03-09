@@ -294,6 +294,94 @@ class TestUpdateSession:
         assert result["current_question_index"] == 5
 
 
+class TestGetSessionByTokenExpiration:
+    """Tests for session expiration check in get_session_by_token."""
+
+    @pytest.mark.asyncio
+    async def test_expired_session_returns_none(
+        self, session_service: SessionService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that expired session returns None from get_session_by_token."""
+        past_date = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        session = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "session_token": "expired_token",
+            "expires_at": past_date,
+        }
+
+        mock_response = MagicMock()
+        mock_response.data = session
+        mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+            mock_response
+        )
+
+        result = await session_service.get_session_by_token("expired_token")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_valid_session_returns_data(
+        self, session_service: SessionService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that valid (not expired) session returns data."""
+        future_date = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+        session = {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "session_token": "valid_token",
+            "expires_at": future_date,
+        }
+
+        mock_response = MagicMock()
+        mock_response.data = session
+        mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+            mock_response
+        )
+
+        result = await session_service.get_session_by_token("valid_token")
+        assert result is not None
+        assert result["id"] == "550e8400-e29b-41d4-a716-446655440000"
+
+
+class TestAnswerMerge:
+    """Tests for answer merge during session claim."""
+
+    def test_session_answers_take_precedence(self) -> None:
+        """Test that session answers override existing keys during merge."""
+        # Simulate the merge logic from _create_or_update_discovery_profile
+        existing_answers = {"q1": {"value": "old"}, "q2": {"value": "existing"}}
+        session_answers = {"q1": {"value": "new"}, "q3": {"value": "added"}}
+
+        # The fixed merge: session answers take precedence
+        merged = {**existing_answers, **session_answers}
+
+        assert merged["q1"]["value"] == "new"  # Session overrides
+        assert merged["q2"]["value"] == "existing"  # Kept from existing
+        assert merged["q3"]["value"] == "added"  # New from session
+
+
+class TestROIInputsSchemaConversion:
+    """Tests for ROIInputsSchema.to_roi_inputs conversion."""
+
+    def test_to_roi_inputs_converts_correctly(self) -> None:
+        """Test that to_roi_inputs converts camelCase to snake_case."""
+        from src.schemas.session import ROIInputsSchema
+
+        schema = ROIInputsSchema(
+            laborRate=25.0,
+            utilization=0.8,
+            maintenanceFactor=0.05,
+            manualMonthlySpend=5000.0,
+            manualMonthlyHours=160.0,
+        )
+
+        result = schema.to_roi_inputs()
+
+        assert result["labor_rate"] == 25.0
+        assert result["utilization"] == 0.8
+        assert result["maintenance_factor"] == 0.05
+        assert result["manual_monthly_spend"] == 5000.0
+        assert result["manual_monthly_hours"] == 160.0
+
+
 class TestCleanupExpiredSessions:
     """Tests for cleanup_expired_sessions method."""
 

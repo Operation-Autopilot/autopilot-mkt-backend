@@ -3,12 +3,21 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
 import stripe
 from fastapi.testclient import TestClient
 
 
 class TestStripeWebhook:
     """Tests for POST /api/v1/webhooks/stripe endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_processed_events(self):
+        """Clear webhook replay prevention cache before each test."""
+        from src.api.routes import webhooks
+        webhooks._processed_events.clear()
+        yield
+        webhooks._processed_events.clear()
 
     @patch("src.services.checkout_service.get_settings")
     @patch("src.services.checkout_service.get_stripe")

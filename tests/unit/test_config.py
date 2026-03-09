@@ -92,16 +92,17 @@ class TestSettings:
         """Test that default values are applied correctly."""
         env_vars = {
             "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_ANON_KEY": "test-anon",
-            "SUPABASE_SERVICE_ROLE_KEY": "test-service",
-            "SUPABASE_JWT_SECRET": "test-secret",
+            "SUPABASE_SECRET_KEY": "sb_secret_test",
+            "SUPABASE_SIGNING_KEY_JWK": '{"kty":"oct","k":"dGVzdA"}',
+            "AUTH_REDIRECT_URL": "http://localhost:3000/verify",
             "OPENAI_API_KEY": "sk-test",
             "PINECONE_API_KEY": "pc-test",
             "PINECONE_ENVIRONMENT": "test-env",
+            "APP_ENV": "development",
         }
 
-        with patch.dict(os.environ, env_vars, clear=False):
-            settings = Settings()
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
 
             assert settings.app_name == "autopilot-backend"
             assert settings.app_env == "development"
@@ -113,25 +114,31 @@ class TestSettings:
 
     def test_settings_validation_error_missing_required(self) -> None:
         """Test that validation errors are raised for missing required fields."""
-        # Clear required environment variables
-        env_vars = {
-            "SUPABASE_URL": "",
-            "SUPABASE_ANON_KEY": "",
-            "SUPABASE_SERVICE_ROLE_KEY": "",
-            "SUPABASE_JWT_SECRET": "",
-            "OPENAI_API_KEY": "",
-            "PINECONE_API_KEY": "",
-            "PINECONE_ENVIRONMENT": "",
-        }
-
-        with patch.dict(os.environ, env_vars, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValidationError) as exc_info:
-                Settings()
+                Settings(_env_file=None)
 
             # Check that validation error includes missing fields
             errors = exc_info.value.errors()
             error_fields = [e["loc"][0] for e in errors]
             assert "supabase_url" in error_fields
+
+
+class TestConfigDefaults:
+    """Tests for configuration default values."""
+
+    def test_max_request_body_size_supports_floor_plans(self):
+        """max_request_body_size should be at least 11MB for floor plan uploads."""
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        # 11MB = 11 * 1024 * 1024 = 11534336
+        assert settings.max_request_body_size >= 11534336, (
+            f"max_request_body_size is {settings.max_request_body_size}, "
+            f"should be >= 11534336 for floor plan uploads"
+        )
+
+        get_settings.cache_clear()
 
 
 class TestGetSettings:

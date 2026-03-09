@@ -32,7 +32,7 @@ def create_test_token(
 class TestForgotPassword:
     """Tests for POST /api/v1/auth/forgot-password endpoint."""
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.auth_service.get_settings")
     def test_forgot_password_sends_email(
         self, mock_settings: MagicMock, mock_supabase: MagicMock, client: TestClient
@@ -57,7 +57,7 @@ class TestForgotPassword:
         assert "message" in data
         mock_auth.reset_password_for_email.assert_called_once()
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.auth_service.get_settings")
     def test_forgot_password_always_returns_success(
         self, mock_settings: MagicMock, mock_supabase: MagicMock, client: TestClient
@@ -85,7 +85,7 @@ class TestForgotPassword:
 class TestResetPassword:
     """Tests for POST /api/v1/auth/reset-password endpoint."""
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.auth_service.get_settings")
     def test_reset_password_with_valid_token(
         self, mock_settings: MagicMock, mock_supabase: MagicMock, client: TestClient
@@ -131,7 +131,7 @@ class TestResetPassword:
         assert "redirect_url" in data
         mock_auth.verify_otp.assert_called_once()
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.auth_service.get_settings")
     def test_reset_password_with_invalid_token(
         self, mock_settings: MagicMock, mock_supabase: MagicMock, client: TestClient
@@ -171,7 +171,7 @@ class TestChangePassword:
     """Tests for POST /api/v1/auth/change-password endpoint."""
 
     @patch("src.api.deps.decode_jwt")
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.profile_service.get_supabase_client")
     def test_change_password_success(
         self,
@@ -243,7 +243,7 @@ class TestChangePassword:
         assert "successfully" in data["message"].lower()
 
     @patch("src.api.deps.decode_jwt")
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     @patch("src.services.profile_service.get_supabase_client")
     def test_change_password_wrong_current_password(
         self,
@@ -335,7 +335,7 @@ class TestChangePassword:
 class TestRefreshToken:
     """Tests for POST /api/v1/auth/refresh endpoint."""
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     def test_refresh_token_success(
         self, mock_supabase: MagicMock, client: TestClient
     ) -> None:
@@ -367,7 +367,7 @@ class TestRefreshToken:
         assert data["expires_in"] == 3600
         mock_auth.refresh_session.assert_called_once_with("valid-refresh-token")
 
-    @patch("src.services.auth_service.get_supabase_client")
+    @patch("src.services.auth_service.create_auth_client")
     def test_refresh_token_invalid(
         self, mock_supabase: MagicMock, client: TestClient
     ) -> None:

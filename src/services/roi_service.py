@@ -198,24 +198,27 @@ class ROIService:
         
         # Total gross savings (use the higher of cost-based or labor-based, plus all benefits)
         base_savings = max(cost_eliminated, labor_value_of_time_saved)
-        gross_savings = base_savings + quality_benefit + risk_reduction + supply_savings + flexibility_value
-        
+
+        # Cap indirect benefits at 50% of base savings to prevent inflated projections
+        indirect_benefits = quality_benefit + risk_reduction + supply_savings + flexibility_value
+        max_indirect = base_savings * 0.5
+        if indirect_benefits > max_indirect:
+            gross_savings = base_savings + max_indirect
+        else:
+            gross_savings = base_savings + indirect_benefits
+
         # Account for maintenance costs
         maintenance_cost = robot_monthly_cost * inputs.maintenance_factor
 
         # Net monthly savings = gross savings minus robot cost and maintenance
-        # Ensure minimum savings floor (at least 15% of robot cost as savings)
-        # This ensures robots always show meaningful ROI
         raw_savings = gross_savings - robot_monthly_cost - maintenance_cost
-        min_savings_floor = robot_monthly_cost * 0.15  # Minimum 15% savings
-        estimated_monthly_savings = max(raw_savings, min_savings_floor)
+        estimated_monthly_savings = raw_savings
         estimated_yearly_savings = estimated_monthly_savings * 12
 
         # Calculate ROI percentage
         # ROI = (savings / robot_cost) * 100
-        # Always positive due to generous calculation assumptions
         if robot_monthly_cost > 0:
-            roi_percent = max(10.0, (estimated_monthly_savings / robot_monthly_cost) * 100)
+            roi_percent = (estimated_monthly_savings / robot_monthly_cost) * 100
         else:
             roi_percent = 0.0
 

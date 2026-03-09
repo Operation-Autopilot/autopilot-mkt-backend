@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 # Order status literal type for validation
-OrderStatus = Literal["pending", "processing", "completed", "cancelled", "refunded"]
+OrderStatus = Literal["pending", "processing", "completed", "cancelled", "refunded", "payment_pending"]
 
 
 class OrderLineItemSchema(BaseModel):

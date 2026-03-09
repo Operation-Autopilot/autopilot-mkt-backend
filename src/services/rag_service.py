@@ -1,13 +1,12 @@
 """RAG service for embedding generation and semantic search operations."""
 
+import asyncio
 import logging
 from typing import Any
 from uuid import UUID
 
-from openai import OpenAI
-
 from src.core.config import get_settings
-from src.core.openai import get_openai_client
+from src.core.openai import TimedOpenAIClient, get_openai_client
 from src.core.pinecone import get_pinecone_index
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """Service for RAG operations including embeddings and semantic search."""
 
-    def __init__(self, openai_client: OpenAI | None = None):
+    def __init__(self, openai_client: TimedOpenAIClient | None = None):
         """Initialize RAG service.
 
         Args:
@@ -26,7 +25,7 @@ class RAGService:
         self._settings = get_settings()
 
     @property
-    def openai_client(self) -> OpenAI:
+    def openai_client(self) -> TimedOpenAIClient:
         """Get OpenAI client."""
         if self._openai_client is None:
             self._openai_client = get_openai_client()
@@ -107,10 +106,12 @@ class RAGService:
             Exception: If embedding generation fails.
         """
         try:
-            response = self.openai_client.embeddings.create(
+            response = await self.openai_client.embeddings.create(
                 model=self._settings.embedding_model,
                 input=text,
             )
+            if not response.data:
+                raise ValueError("No embedding returned from OpenAI")
             return response.data[0].embedding
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
@@ -158,16 +159,17 @@ class RAGService:
             if modes := robot_data.get("modes"):
                 metadata["modes"] = modes
 
-            # Upsert to Pinecone
+            # Upsert to Pinecone (run in thread to avoid blocking event loop)
             index = get_pinecone_index()
-            index.upsert(
+            await asyncio.to_thread(
+                index.upsert,
                 vectors=[
                     {
                         "id": embedding_id,
                         "values": embedding,
                         "metadata": metadata,
                     }
-                ]
+                ],
             )
 
             logger.info(f"Indexed robot {robot_id} with embedding ID {embedding_id}")
@@ -185,7 +187,7 @@ class RAGService:
         """
         try:
             index = get_pinecone_index()
-            index.delete(ids=[embedding_id])
+            await asyncio.to_thread(index.delete, ids=[embedding_id])
             logger.info(f"Deleted embedding {embedding_id}")
         except Exception as e:
             logger.error(f"Failed to delete embedding {embedding_id}: {e}")
@@ -216,9 +218,10 @@ class RAGService:
             if category:
                 filter_dict = {"category": {"$eq": category}}
 
-            # Query Pinecone
+            # Query Pinecone (run in thread to avoid blocking event loop)
             index = get_pinecone_index()
-            results = index.query(
+            results = await asyncio.to_thread(
+                index.query,
                 vector=query_embedding,
                 top_k=top_k,
                 filter=filter_dict,
@@ -227,7 +230,7 @@ class RAGService:
 
             # Format results
             search_results = []
-            for match in results.matches:
+            for match in (results.matches or []):
                 search_results.append(
                     {
                         "robot_id": match.metadata.get("robot_id") if match.metadata else None,
@@ -264,9 +267,10 @@ class RAGService:
             # Generate embedding from discovery context
             query_embedding = await self.generate_embedding(discovery_context)
 
-            # Query Pinecone
+            # Query Pinecone (run in thread to avoid blocking event loop)
             index = get_pinecone_index()
-            results = index.query(
+            results = await asyncio.to_thread(
+                index.query,
                 vector=query_embedding,
                 top_k=top_k,
                 include_metadata=True,
@@ -274,7 +278,7 @@ class RAGService:
 
             # Format results with semantic scores
             search_results = []
-            for match in results.matches:
+            for match in (results.matches or []):
                 search_results.append({
                     "robot_id": match.metadata.get("robot_id") if match.metadata else None,
                     "semantic_score": match.score,

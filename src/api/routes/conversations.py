@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 
 from src.api.deps import AuthContext, CurrentUser, DualAuth, SessionRateLimit
 from src.schemas.conversation import (
@@ -527,14 +527,15 @@ async def get_conversation(
     """
     service = ConversationService()
 
+    # Check access before fetching data
+    await _check_conversation_access(conversation_id, auth)
+
     conversation = await service.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found",
         )
-
-    await _check_conversation_access(conversation_id, auth)
 
     # Get message count
     messages, _, _ = await service.get_messages(conversation_id, limit=1)
@@ -627,6 +628,7 @@ async def send_message(
     data: MessageCreate,
     auth: DualAuth,
     _rate_limit: SessionRateLimit,
+    background_tasks: BackgroundTasks,
 ) -> MessageWithAgentResponse:
     """Send a message to a conversation and get agent response.
 
@@ -682,23 +684,9 @@ async def send_message(
         agent_message = result["agent_message"]
         chips = result["chips"]
 
-        # Build discovery state from session or discovery profile
-        current_answers: dict = {}
-        if profile_id:
-            # Authenticated user - get answers from discovery profile
-            discovery_service = DiscoveryProfileService()
-            discovery_profile = await discovery_service.get_by_profile_id(profile_id)
-            if discovery_profile:
-                current_answers = discovery_profile.get("answers", {})
-        elif session_id:
-            # Anonymous user - get answers from session
-            session_service = SessionService()
-            session = await session_service.get_session_by_id(session_id)
-            if session:
-                current_answers = session.get("answers", {})
-
-        answered_keys = list(current_answers.keys())
-        missing_keys = [k for k in REQUIRED_QUESTION_KEYS if k not in current_answers]
+        # Build discovery state from data already computed in generate_discovery_response
+        answered_keys = result.get("answered_keys", [])
+        missing_keys = result.get("missing_keys", [])
         progress = int((len(answered_keys) / len(REQUIRED_QUESTION_KEYS)) * 100) if REQUIRED_QUESTION_KEYS else 0
 
         discovery_state = DiscoveryState(
@@ -715,25 +703,27 @@ async def send_message(
             metadata=data.metadata,
         )
 
-    # Trigger profile extraction after agent response (non-blocking on failure)
-    # This updates the stored answers for future messages and ROI calculations
-    try:
-        extraction_service = ProfileExtractionService()
-        extraction_result = await extraction_service.extract_and_update(
-            conversation_id=conversation_id,
-            session_id=session_id,
-            profile_id=profile_id,
-        )
-        if extraction_result.get("extracted_count", 0) > 0:
-            logger.info(
-                "Extracted %d fields from conversation %s: %s",
-                extraction_result["extracted_count"],
-                conversation_id,
-                extraction_result.get("keys_extracted", []),
+    # Trigger profile extraction in background (non-blocking for faster response)
+    # BUG-47: Moved to BackgroundTasks to avoid blocking the response
+    async def _run_extraction() -> None:
+        try:
+            extraction_service = ProfileExtractionService()
+            extraction_result = await extraction_service.extract_and_update(
+                conversation_id=conversation_id,
+                session_id=session_id,
+                profile_id=profile_id,
             )
-    except Exception as e:
-        # Log but don't fail the response - extraction is enhancement, not critical
-        logger.warning("Profile extraction failed for conversation %s: %s", conversation_id, e)
+            if extraction_result.get("extracted_count", 0) > 0:
+                logger.info(
+                    "Extracted %d fields from conversation %s: %s",
+                    extraction_result["extracted_count"],
+                    conversation_id,
+                    extraction_result.get("keys_extracted", []),
+                )
+        except Exception as e:
+            logger.warning("Profile extraction failed for conversation %s: %s", conversation_id, e)
+
+    background_tasks.add_task(_run_extraction)
 
     return MessageWithAgentResponse(
         user_message=user_message,

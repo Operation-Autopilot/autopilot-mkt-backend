@@ -56,6 +56,8 @@ class ProfileService:
             .execute()
         )
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def get_profile(self, user_id: UUID) -> dict[str, Any] | None:

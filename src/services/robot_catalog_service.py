@@ -1,6 +1,8 @@
 """Robot catalog business logic service."""
 
+import asyncio
 import logging
+import re
 from collections import Counter
 from typing import Any
 from uuid import UUID
@@ -34,6 +36,20 @@ PRICE_RANGES = [
 ]
 
 
+def _sanitize_filter_input(value: str) -> str:
+    """Sanitize user input for use in PostgREST filter expressions.
+
+    Strips characters that could be used for injection attacks.
+
+    Args:
+        value: Raw user input string.
+
+    Returns:
+        Sanitized string safe for filter expressions.
+    """
+    return re.sub(r"[^\w\s\-.,()]+", "", value)
+
+
 class RobotCatalogService:
     """Service for managing robot product catalog."""
 
@@ -45,6 +61,10 @@ class RobotCatalogService:
         """
         self.client = get_supabase_client()
         self._rag_service = rag_service
+
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
 
     @property
     def rag_service(self) -> RAGService:
@@ -68,7 +88,7 @@ class RobotCatalogService:
             query = query.eq("active", True)
 
         query = query.order("name")
-        response = query.execute()
+        response = await self._execute_sync(query)
 
         return response.data or []
 
@@ -100,19 +120,21 @@ class RobotCatalogService:
 
         # Apply category filter
         if filters.category:
-            query = query.ilike("category", f"%{filters.category}%")
+            safe_category = _sanitize_filter_input(filters.category)
+            query = query.ilike("category", f"%{safe_category}%")
 
         # Apply search filter
         if filters.search:
+            safe_search = _sanitize_filter_input(filters.search)
             # Search in name, category, and best_for
             query = query.or_(
-                f"name.ilike.%{filters.search}%,"
-                f"category.ilike.%{filters.search}%,"
-                f"best_for.ilike.%{filters.search}%"
+                f"name.ilike.%{safe_search}%,"
+                f"category.ilike.%{safe_search}%,"
+                f"best_for.ilike.%{safe_search}%"
             )
 
         # Execute query
-        response = query.execute()
+        response = await self._execute_sync(query)
         robots = response.data or []
 
         # Apply array-based filters in Python (Supabase array filtering is limited)
@@ -145,11 +167,16 @@ class RobotCatalogService:
                 and self._get_robot_coverage(r) < max_coverage
             ]
 
-        # Total count before sorting
+        # Total count before sorting/pagination
         total = len(robots)
 
         # Apply sorting
         robots = self._sort_robots(robots, filters.sort)
+
+        # Apply pagination
+        start = (filters.page - 1) * filters.page_size
+        end = start + filters.page_size
+        robots = robots[start:end]
 
         return robots, total
 
@@ -346,13 +373,13 @@ class RobotCatalogService:
         Returns:
             dict | None: The robot data or None if not found.
         """
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select("*")
             .eq("id", str(robot_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data if response and response.data else None
 
@@ -374,7 +401,7 @@ class RobotCatalogService:
         """
         from src.core.config import get_settings
 
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select(
                 "id, name, monthly_lease, stripe_product_id, stripe_lease_price_id, "
@@ -382,8 +409,8 @@ class RobotCatalogService:
             )
             .eq("id", str(robot_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if not response.data:
             return None
@@ -417,12 +444,12 @@ class RobotCatalogService:
             return []
 
         id_strings = [str(rid) for rid in robot_ids]
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select("*")
             .in_("id", id_strings)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data or []
 
@@ -447,9 +474,10 @@ class RobotCatalogService:
             )
 
             # Update robot with embedding_id
-            self.client.table("robot_catalog").update(
+            query = self.client.table("robot_catalog").update(
                 {"embedding_id": embedding_id}
-            ).eq("id", str(robot_id)).execute()
+            ).eq("id", str(robot_id))
+            await self._execute_sync(query)
 
             logger.info(f"Indexed robot {robot_id}")
             return embedding_id
@@ -479,9 +507,10 @@ class RobotCatalogService:
                 )
 
                 # Update robot with embedding_id
-                self.client.table("robot_catalog").update(
+                query = self.client.table("robot_catalog").update(
                     {"embedding_id": embedding_id}
-                ).eq("id", robot["id"]).execute()
+                ).eq("id", robot["id"])
+                await self._execute_sync(query)
 
                 indexed += 1
 

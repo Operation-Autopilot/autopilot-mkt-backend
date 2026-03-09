@@ -1,5 +1,6 @@
 """Checkout and order business logic service."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -25,6 +26,10 @@ class CheckoutService:
         self.stripe = get_stripe()
         self.settings = get_settings()
         self.robot_service = RobotCatalogService()
+
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
 
     async def create_checkout_session(
         self,
@@ -71,6 +76,9 @@ class CheckoutService:
         if not robot.get("active", False):
             raise ValueError("Product is no longer available")
 
+        if not robot.get("stripe_lease_price_id"):
+            raise ValueError("Robot is not available for checkout — missing price configuration")
+
         # Calculate total in cents
         monthly_lease = robot.get("monthly_lease", 0)
         if isinstance(monthly_lease, str):
@@ -101,7 +109,10 @@ class CheckoutService:
             "metadata": {},
         }
 
-        order_response = self.client.table("orders").insert(order_data).execute()
+        order_query = self.client.table("orders").insert(order_data)
+        order_response = await self._execute_sync(order_query)
+        if not order_response.data:
+            raise ValueError("Database operation returned no data")
         order = order_response.data[0]
         order_id = order["id"]
 
@@ -129,8 +140,8 @@ class CheckoutService:
             # In production mode, Stripe handles customer creation automatically
             if customer_email:
                 # Create or find existing customer
-                existing_customers = self.stripe.Customer.list(
-                    email=customer_email, limit=1, api_key=stripe_api_key
+                existing_customers = await asyncio.to_thread(
+                    self.stripe.Customer.list, email=customer_email, limit=1, api_key=stripe_api_key
                 )
                 if existing_customers.data:
                     checkout_params["customer"] = existing_customers.data[0].id
@@ -248,6 +259,16 @@ class CheckoutService:
         if not order_id:
             logger.warning("Webhook missing order_id in metadata: %s", session.get("id"))
             return {}
+
+        # Check current order status — skip if already in terminal state
+        current_order = await self.get_order(UUID(order_id))
+        if current_order and current_order.get("status") in ("completed", "cancelled"):
+            logger.info(
+                "Order %s already in terminal state '%s', skipping async payment update",
+                order_id,
+                current_order["status"],
+            )
+            return current_order
 
         update_data = {
             "status": "completed",
@@ -429,12 +450,10 @@ class CheckoutService:
         # Try production secret first
         if self.settings.stripe_webhook_secret:
             secrets_to_try.append((self.settings.stripe_webhook_secret, False))
-            logger.debug("Will try production webhook secret: %s...", self.settings.stripe_webhook_secret[:10])
 
         # Then try test secret
         if self.settings.stripe_webhook_secret_test:
             secrets_to_try.append((self.settings.stripe_webhook_secret_test, True))
-            logger.debug("Will try test webhook secret: %s...", self.settings.stripe_webhook_secret_test[:10])
 
         if not secrets_to_try:
             raise ValueError("Stripe webhook secret is not configured. Please set STRIPE_WEBHOOK_SECRET environment variable.")

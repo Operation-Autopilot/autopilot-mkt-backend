@@ -1,5 +1,6 @@
 """Email service using Resend for transactional emails."""
 
+import html
 import logging
 from typing import Any
 
@@ -40,6 +41,9 @@ class EmailService:
         """
         accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept"
 
+        safe_inviter = html.escape(inviter_name)
+        safe_company = html.escape(company_name)
+
         html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -55,7 +59,7 @@ class EmailService:
 
     <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
         <p style="font-size: 16px; margin-bottom: 20px;">
-            <strong>{inviter_name}</strong> has invited you to join <strong>{company_name}</strong> on Autopilot.
+            <strong>{safe_inviter}</strong> has invited you to join <strong>{safe_company}</strong> on Autopilot.
         </p>
 
         <p style="font-size: 14px; color: #6b7280; margin-bottom: 25px;">
@@ -112,6 +116,72 @@ This invitation expires in 7 days. If you didn't expect this invitation, you can
             logger.error("Failed to send invitation email to %s: %s", to_email, str(e))
             return {"success": False, "error": str(e)}
 
+    async def send_invitation_reminder_email(
+        self,
+        to_email: str,
+        inviter_name: str,
+        company_name: str,
+        invitation_id: str,
+    ) -> dict[str, Any]:
+        """Send a reminder for a pending company invitation.
+
+        Args:
+            to_email: Recipient email address.
+            inviter_name: Name of the person who sent the invite.
+            company_name: Name of the company.
+            invitation_id: UUID of the invitation.
+
+        Returns:
+            dict: Resend API response with email ID.
+        """
+        accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept"
+
+        safe_inviter = html.escape(inviter_name)
+        safe_company = html.escape(company_name)
+
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Reminder: You're Invited!</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Friendly Reminder</h1>
+    </div>
+    <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 10px 10px;">
+        <p style="font-size: 16px; margin-bottom: 20px;">
+            <strong>{safe_inviter}</strong> invited you to join <strong>{safe_company}</strong> on Autopilot, and your invitation is still pending.
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{accept_url}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; display: inline-block;">
+                Accept Invitation
+            </a>
+        </div>
+        <p style="font-size: 12px; color: #9ca3af; text-align: center;">
+            This invitation will expire soon. If you didn't expect this, you can safely ignore this email.
+        </p>
+    </div>
+</body>
+</html>
+"""
+
+        try:
+            response = resend.Emails.send({
+                "from": self.from_email,
+                "to": [to_email],
+                "subject": f"Reminder: You're invited to join {company_name} on Autopilot",
+                "html": html_content,
+            })
+
+            logger.info("Reminder email sent to %s, id: %s", to_email, response.get("id"))
+            return {"success": True, "email_id": response.get("id")}
+
+        except Exception as e:
+            logger.error("Failed to send reminder email to %s: %s", to_email, str(e))
+            return {"success": False, "error": str(e)}
+
     async def send_welcome_email(
         self,
         to_email: str,
@@ -126,7 +196,7 @@ This invitation expires in 7 days. If you didn't expect this invitation, you can
         Returns:
             dict: Resend API response.
         """
-        name = display_name or "there"
+        name = html.escape(display_name) if display_name else "there"
 
         html_content = f"""
 <!DOCTYPE html>

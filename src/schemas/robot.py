@@ -78,6 +78,19 @@ class RobotFilters(BaseModel):
         description="Text search in name, category, best_for"
     )
 
+    # Pagination
+    page: int = Field(
+        default=1,
+        ge=1,
+        description="Page number (1-indexed)"
+    )
+    page_size: int = Field(
+        default=50,
+        ge=1,
+        le=100,
+        description="Results per page"
+    )
+
 
 class RobotResponse(BaseModel):
     """Schema for robot API responses.

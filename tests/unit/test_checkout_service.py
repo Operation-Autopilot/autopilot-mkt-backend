@@ -97,7 +97,7 @@ class TestCreateCheckoutSession:
         ):
             # Mock order creation
             order_response = MagicMock()
-            order_response.data = [{"id": "order-123"}]
+            order_response.data = [{"id": "880e8400-e29b-41d4-a716-446655440000"}]
             mock_supabase.table.return_value.insert.return_value.execute.return_value = (
                 order_response
             )
@@ -122,7 +122,7 @@ class TestCreateCheckoutSession:
 
             assert result["checkout_url"] == "https://checkout.stripe.com/cs_test_123"
             assert result["stripe_session_id"] == "cs_test_123"
-            assert result["order_id"] == UUID("order-123")
+            assert result["order_id"] == UUID("880e8400-e29b-41d4-a716-446655440000")
 
     @pytest.mark.asyncio
     async def test_raises_error_for_inactive_product(
@@ -187,7 +187,8 @@ class TestVerifyWebhookSignature:
             sig_header="test_signature",
         )
 
-        assert result == expected_event
+        # verify_webhook_signature returns (event, is_test_mode) tuple
+        assert result == (expected_event, False)
 
     def test_raises_error_for_invalid_signature(
         self,
@@ -296,6 +297,110 @@ class TestHandleCheckoutExpired:
         # Verify update was called with cancelled status
         update_call = mock_supabase.table.return_value.update.call_args
         assert update_call[0][0]["status"] == "cancelled"
+
+
+class TestACHStateValidation:
+    """Tests for state validation before ACH transition."""
+
+    @pytest.mark.asyncio
+    async def test_ach_on_completed_order_skipped(
+        self,
+        checkout_service: CheckoutService,
+        mock_supabase: MagicMock,
+    ) -> None:
+        """Test that ACH payment on completed order is skipped."""
+        completed_order = {
+            "id": "660e8400-e29b-41d4-a716-446655440000",
+            "status": "completed",
+        }
+
+        # Mock get_order to return completed order
+        mock_response = MagicMock()
+        mock_response.data = completed_order
+        mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+            mock_response
+        )
+
+        event = {
+            "data": {
+                "object": {
+                    "metadata": {"order_id": "660e8400-e29b-41d4-a716-446655440000"},
+                }
+            },
+        }
+
+        result = await checkout_service.handle_async_payment_succeeded(event)
+        assert result["status"] == "completed"
+        # Verify update was NOT called (order was already completed)
+        mock_supabase.table.return_value.update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ach_on_cancelled_order_skipped(
+        self,
+        checkout_service: CheckoutService,
+        mock_supabase: MagicMock,
+    ) -> None:
+        """Test that ACH payment on cancelled order is skipped."""
+        cancelled_order = {
+            "id": "660e8400-e29b-41d4-a716-446655440000",
+            "status": "cancelled",
+        }
+
+        mock_response = MagicMock()
+        mock_response.data = cancelled_order
+        mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+            mock_response
+        )
+
+        event = {
+            "data": {
+                "object": {
+                    "metadata": {"order_id": "660e8400-e29b-41d4-a716-446655440000"},
+                }
+            },
+        }
+
+        result = await checkout_service.handle_async_payment_succeeded(event)
+        assert result["status"] == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_ach_on_payment_pending_allowed(
+        self,
+        checkout_service: CheckoutService,
+        mock_supabase: MagicMock,
+    ) -> None:
+        """Test that ACH payment on payment_pending order is allowed."""
+        pending_order = {
+            "id": "660e8400-e29b-41d4-a716-446655440000",
+            "status": "payment_pending",
+        }
+
+        # Mock get_order to return payment_pending order
+        mock_get_response = MagicMock()
+        mock_get_response.data = pending_order
+        mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
+            mock_get_response
+        )
+
+        # Mock the update to return completed order
+        completed_order = pending_order.copy()
+        completed_order["status"] = "completed"
+        mock_update_response = MagicMock()
+        mock_update_response.data = [completed_order]
+        mock_supabase.table.return_value.update.return_value.eq.return_value.execute.return_value = (
+            mock_update_response
+        )
+
+        event = {
+            "data": {
+                "object": {
+                    "metadata": {"order_id": "660e8400-e29b-41d4-a716-446655440000"},
+                }
+            },
+        }
+
+        result = await checkout_service.handle_async_payment_succeeded(event)
+        assert result["status"] == "completed"
 
 
 class TestGetOrder:

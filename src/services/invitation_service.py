@@ -57,6 +57,8 @@ class InvitationService:
             .execute()
         )
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         invitation = response.data[0]
 
         # Get company and inviter details for the email
@@ -242,6 +244,8 @@ class InvitationService:
             .execute()
         )
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]
 
     async def decline_invitation(self, invitation_id: UUID, user_email: str) -> dict[str, Any]:
@@ -276,4 +280,6 @@ class InvitationService:
             .execute()
         )
 
+        if not response.data:
+            raise ValueError("Database operation returned no data")
         return response.data[0]

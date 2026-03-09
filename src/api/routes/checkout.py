@@ -156,16 +156,9 @@ async def get_order(order_id: UUID, auth: DualAuth) -> OrderResponse:
     )
 
     if not can_access:
-        # Check if order exists
-        order = await service.get_order(order_id)
-        if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Order not found",
-            )
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this order",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found",
         )
 
     order = await service.get_order(order_id)

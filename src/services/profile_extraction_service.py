@@ -28,7 +28,7 @@ class ProfileExtractionService:
     # Using gpt-4o-mini for extraction to reduce costs (~90% savings vs gpt-4o)
     # Mini model handles structured JSON extraction well with strict mode
     EXTRACTION_MODEL = "gpt-4o-mini"
-    MAX_MESSAGES_FOR_EXTRACTION = 10  # Last N messages to analyze
+    MAX_MESSAGES_FOR_EXTRACTION = 4  # Last N messages to analyze
 
     def __init__(
         self,
@@ -169,7 +169,7 @@ class ProfileExtractionService:
         )
 
         try:
-            response = self.client.chat.create(
+            response = await self.client.chat.create(
                 model=self.EXTRACTION_MODEL,
                 messages=[
                     {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},

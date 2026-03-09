@@ -288,3 +288,59 @@ class TestGetRobotsByIds:
         ])
 
         assert result == []
+
+
+class TestPagination:
+    """Tests for pagination in list_robots_filtered."""
+
+    @pytest.mark.asyncio
+    async def test_list_robots_applies_pagination(
+        self,
+        robot_catalog_service: RobotCatalogService,
+        mock_supabase: MagicMock,
+    ) -> None:
+        """Test that list_robots_filtered applies page/page_size."""
+        from src.schemas.robot import RobotFilters
+
+        # Create 5 robots
+        robots = [{"id": str(i), "name": f"Robot {i}", "active": True} for i in range(5)]
+
+        mock_response = MagicMock()
+        mock_response.data = robots
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            mock_response
+        )
+
+        filters = RobotFilters(page=1, page_size=2)
+        result, total = await robot_catalog_service.list_robots_filtered(filters)
+
+        assert total == 5  # Total count unchanged
+        assert len(result) <= 2  # Page size applied
+
+
+class TestSanitizeFilterInput:
+    """Tests for _sanitize_filter_input and injection prevention."""
+
+    def test_search_with_sql_injection_chars_sanitized(self) -> None:
+        """Test that SQL injection characters are stripped from search input."""
+        from src.services.robot_catalog_service import _sanitize_filter_input
+
+        result = _sanitize_filter_input("robot'; DROP TABLE--")
+        assert "'" not in result
+        assert ";" not in result
+
+    def test_search_with_backslash_no_crash(self) -> None:
+        """Test that backslash in search input is sanitized without crash."""
+        from src.services.robot_catalog_service import _sanitize_filter_input
+
+        result = _sanitize_filter_input("robot\\test")
+        assert "\\" not in result
+
+    def test_category_with_injection_chars_sanitized(self) -> None:
+        """Test that injection chars in category filter are sanitized."""
+        from src.services.robot_catalog_service import _sanitize_filter_input
+
+        result = _sanitize_filter_input("Premium%'; SELECT *--")
+        assert "'" not in result
+        assert "%" not in result
+        assert "*" not in result

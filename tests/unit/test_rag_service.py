@@ -1,6 +1,6 @@
 """Unit tests for RAGService."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -101,7 +101,7 @@ class TestGenerateEmbedding:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1, 0.2, 0.3])]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         service = RAGService(openai_client=mock_client)
         result = await service.generate_embedding("test text")
@@ -113,7 +113,7 @@ class TestGenerateEmbedding:
     async def test_generate_embedding_failure(self) -> None:
         """Test embedding generation failure handling."""
         mock_client = MagicMock()
-        mock_client.embeddings.create.side_effect = Exception("API error")
+        mock_client.embeddings.create = AsyncMock(side_effect=Exception("API error"))
 
         service = RAGService(openai_client=mock_client)
 
@@ -130,7 +130,7 @@ class TestIndexRobot:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         robot_id = uuid4()
         robot_data = {
@@ -153,7 +153,7 @@ class TestIndexRobot:
     async def test_index_robot_embedding_failure(self) -> None:
         """Test robot indexing when embedding fails."""
         mock_client = MagicMock()
-        mock_client.embeddings.create.side_effect = Exception("Embedding error")
+        mock_client.embeddings.create = AsyncMock(side_effect=Exception("Embedding error"))
 
         service = RAGService(openai_client=mock_client)
 
@@ -186,7 +186,7 @@ class TestSearchRobots:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         mock_match = MagicMock()
         mock_match.metadata = {"robot_id": "123", "name": "Test Robot"}
@@ -210,7 +210,7 @@ class TestSearchRobots:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
             mock_index = MagicMock()
@@ -229,6 +229,67 @@ class TestSearchRobots:
             assert call_kwargs["filter"] == {"category": {"$eq": "Premium Combo"}}
 
 
+class TestGenerateEmbeddingNullGuard:
+    """Tests for generate_embedding null guard on empty response."""
+
+    @pytest.mark.asyncio
+    async def test_empty_embedding_response_raises_value_error(self) -> None:
+        """Test that empty embedding response raises ValueError, not IndexError."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = []  # Empty response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        service = RAGService(openai_client=mock_client)
+
+        with pytest.raises(ValueError, match="No embedding returned"):
+            await service.generate_embedding("test text")
+
+
+class TestSearchRobotsNullMatches:
+    """Tests for search_robots with None matches from Pinecone."""
+
+    @pytest.mark.asyncio
+    async def test_none_matches_returns_empty_list(self) -> None:
+        """Test that None matches from Pinecone returns empty list, no crash."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
+            mock_index = MagicMock()
+            mock_result = MagicMock()
+            mock_result.matches = None  # None matches
+            mock_index.query.return_value = mock_result
+            mock_get_index.return_value = mock_index
+
+            service = RAGService(openai_client=mock_client)
+            results = await service.search_robots("test query")
+
+            assert results == []
+
+    @pytest.mark.asyncio
+    async def test_none_matches_in_discovery_search_returns_empty_list(self) -> None:
+        """Test that None matches in discovery search returns empty list."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+
+        with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
+            mock_index = MagicMock()
+            mock_result = MagicMock()
+            mock_result.matches = None  # None matches
+            mock_index.query.return_value = mock_result
+            mock_get_index.return_value = mock_index
+
+            service = RAGService(openai_client=mock_client)
+            results = await service.search_robots_for_discovery("test context")
+
+            assert results == []
+
+
 class TestGetRelevantRobotsForContext:
     """Tests for get_relevant_robots_for_context method."""
 
@@ -238,7 +299,7 @@ class TestGetRelevantRobotsForContext:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         mock_match = MagicMock()
         mock_match.metadata = {
@@ -268,7 +329,7 @@ class TestGetRelevantRobotsForContext:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.data = [MagicMock(embedding=[0.1] * 1536)]
-        mock_client.embeddings.create.return_value = mock_response
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
 
         with patch("src.services.rag_service.get_pinecone_index") as mock_get_index:
             mock_index = MagicMock()
@@ -284,7 +345,7 @@ class TestGetRelevantRobotsForContext:
     async def test_get_relevant_robots_for_context_error_handling(self) -> None:
         """Test error handling in get_relevant_robots_for_context."""
         mock_client = MagicMock()
-        mock_client.embeddings.create.side_effect = Exception("API error")
+        mock_client.embeddings.create = AsyncMock(side_effect=Exception("API error"))
 
         service = RAGService(openai_client=mock_client)
         result = await service.get_relevant_robots_for_context("test query")
