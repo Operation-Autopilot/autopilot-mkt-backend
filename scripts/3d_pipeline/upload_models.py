@@ -41,7 +41,12 @@ def get_supabase_client():
 
 
 def get_robot_id_by_name(client, name: str) -> str | None:
-    """Look up robot_catalog ID by name."""
+    """Look up robot_catalog ID by name (exact match first, then fuzzy)."""
+    # Try exact match first
+    response = client.table("robot_catalog").select("id").eq("name", name).limit(1).execute()
+    if response.data:
+        return response.data[0]["id"]
+    # Fall back to fuzzy match
     response = client.table("robot_catalog").select("id").ilike("name", f"%{name}%").limit(1).execute()
     if response.data:
         return response.data[0]["id"]
