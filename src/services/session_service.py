@@ -1,6 +1,7 @@
 """Session business logic service."""
 
 import asyncio
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,8 @@ from src.schemas.session import SessionUpdate
 
 if TYPE_CHECKING:
     from src.services.checkout_service import CheckoutService
+
+logger = logging.getLogger(__name__)
 
 
 class SessionService:
@@ -278,11 +281,15 @@ class SessionService:
         conversation_transferred = False
         conversation_id = session.get("conversation_id")
         if conversation_id:
-            await self._transfer_conversation_ownership(
-                conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
-                profile_id=profile_id,
-            )
-            conversation_transferred = True
+            try:
+                await self._transfer_conversation_ownership(
+                    conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
+                    profile_id=profile_id,
+                )
+                conversation_transferred = True
+            except Exception as e:
+                logger.warning("Failed to transfer conversation %s: %s", conversation_id, e)
+                conversation_transferred = False
 
         # Transfer orders to the profile if checkout service is available
         orders_transferred = 0
@@ -380,7 +387,9 @@ class SessionService:
                     .eq("profile_id", str(profile_id))
                 )
                 response = await self._execute_sync(query)
-                return response.data[0]
+                if response.data and len(response.data) > 0:
+                    return response.data[0]
+                return existing_profile
             else:
                 # Nothing to merge, return existing profile as-is
                 return existing_profile
@@ -401,7 +410,9 @@ class SessionService:
                 .insert(profile_data)
             )
             response = await self._execute_sync(query)
-            return response.data[0]
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            raise ValueError("Failed to create discovery profile")
 
     async def _transfer_conversation_ownership(
         self,

@@ -1,6 +1,7 @@
 """Webhook API routes for external service integrations."""
 
 import logging
+import threading
 import time
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 # Webhook replay prevention — in-memory event ID tracking
 # TODO: Replace with Redis/DB-backed dedup for multi-worker deployments
 _processed_events: dict[str, float] = {}  # event_id -> timestamp
+_processed_events_lock = threading.Lock()
 _EVENT_TTL = 3600  # 1 hour
 
 
@@ -77,15 +79,16 @@ async def stripe_webhook(request: Request) -> dict[str, str]:
     event_id = event.get("id")
     if event_id:
         now = time.time()
-        # Clean up expired entries
-        expired = [k for k, v in _processed_events.items() if now - v > _EVENT_TTL]
-        for k in expired:
-            del _processed_events[k]
+        with _processed_events_lock:
+            # Clean up expired entries
+            expired = [k for k, v in _processed_events.items() if now - v > _EVENT_TTL]
+            for k in expired:
+                del _processed_events[k]
 
-        if event_id in _processed_events:
-            logger.info("Duplicate webhook event %s, skipping", event_id)
-            return {"status": "already_processed"}
-        _processed_events[event_id] = now
+            if event_id in _processed_events:
+                logger.info("Duplicate webhook event %s, skipping", event_id)
+                return {"status": "already_processed"}
+            _processed_events[event_id] = now
 
     # Process the event
     event_type = event.get("type", "")

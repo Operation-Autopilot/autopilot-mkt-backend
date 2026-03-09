@@ -83,7 +83,7 @@ class CheckoutService:
         monthly_lease = robot.get("monthly_lease", 0)
         if isinstance(monthly_lease, str):
             monthly_lease = Decimal(monthly_lease)
-        total_cents = int(monthly_lease * 100)
+        total_cents = int(Decimal(str(monthly_lease)) * 100)
 
         # Create line items for the order
         line_items = [
@@ -160,10 +160,13 @@ class CheckoutService:
             )
 
             # Update order with Stripe session ID and test mode flag
-            self.client.table("orders").update({
+            existing_metadata = order.get("metadata", {}) or {}
+            merged_metadata = {**existing_metadata, "is_test_mode": use_test_mode}
+            query = self.client.table("orders").update({
                 "stripe_checkout_session_id": stripe_session.id,
-                "metadata": {"is_test_mode": use_test_mode},
-            }).eq("id", order_id).execute()
+                "metadata": merged_metadata,
+            }).eq("id", order_id)
+            await self._execute_sync(query)
 
             return {
                 "checkout_url": stripe_session.url,
@@ -175,9 +178,10 @@ class CheckoutService:
         except stripe.error.StripeError as e:
             # Clean up the order if Stripe fails
             logger.error("Stripe error creating checkout session: %s", str(e))
-            self.client.table("orders").update(
+            query = self.client.table("orders").update(
                 {"status": "cancelled"}
-            ).eq("id", order_id).execute()
+            ).eq("id", order_id)
+            await self._execute_sync(query)
             raise
 
     async def handle_checkout_completed(self, event: dict[str, Any]) -> dict[str, Any]:
@@ -227,12 +231,12 @@ class CheckoutService:
             }
             log_status = "payment_pending"
 
-        response = (
+        query = (
             self.client.table("orders")
             .update(update_data)
             .eq("id", order_id)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             logger.info("Order %s marked as %s", order_id, log_status)
@@ -275,12 +279,12 @@ class CheckoutService:
             "completed_at": datetime.now(timezone.utc).isoformat(),
         }
 
-        response = (
+        query = (
             self.client.table("orders")
             .update(update_data)
             .eq("id", order_id)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             logger.info("Order %s async payment succeeded, marked as completed", order_id)
@@ -308,17 +312,22 @@ class CheckoutService:
             logger.warning("Webhook missing order_id in metadata: %s", session.get("id"))
             return {}
 
+        # Fetch existing order to merge metadata
+        existing_order = await self.get_order(UUID(order_id))
+        existing_metadata = (existing_order.get("metadata", {}) or {}) if existing_order else {}
+        merged_metadata = {**existing_metadata, "failure_reason": "async_payment_failed"}
+
         update_data: dict[str, Any] = {
             "status": "cancelled",
-            "metadata": {"failure_reason": "async_payment_failed"},
+            "metadata": merged_metadata,
         }
 
-        response = (
+        query = (
             self.client.table("orders")
             .update(update_data)
             .eq("id", order_id)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             logger.info("Order %s async payment failed, marked as cancelled", order_id)
@@ -340,9 +349,10 @@ class CheckoutService:
             logger.warning("Webhook missing order_id in metadata: %s", session.get("id"))
             return
 
-        self.client.table("orders").update(
+        query = self.client.table("orders").update(
             {"status": "cancelled"}
-        ).eq("id", order_id).execute()
+        ).eq("id", order_id)
+        await self._execute_sync(query)
 
         logger.info("Order %s marked as cancelled (expired)", order_id)
 
