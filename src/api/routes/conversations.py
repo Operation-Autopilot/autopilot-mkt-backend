@@ -403,7 +403,7 @@ async def get_current_conversation(
 
     # Generate initial greeting for new conversations OR existing conversations with no messages
     # (handles migration from old frontend-only greetings)
-    if is_new and len(messages_data) == 0:
+    if is_new or len(messages_data) == 0:
         try:
             agent_service = AgentService()
             session_id_for_greeting = auth.session.session_id if auth.session else None
@@ -628,7 +628,7 @@ async def send_message(
     data: MessageCreate,
     auth: DualAuth,
     _rate_limit: SessionRateLimit,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    background_tasks: BackgroundTasks,
 ) -> MessageWithAgentResponse:
     """Send a message to a conversation and get agent response.
 

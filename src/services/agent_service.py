@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # Module-level TTL cache for robot catalog to avoid repeated DB fetches
 _robot_cache: tuple[float, list] | None = None
 _ROBOT_CACHE_TTL = 300  # 5 minutes
+_robot_cache_lock = asyncio.Lock()
 
 
 async def _get_cached_robot_catalog() -> list[dict[str, Any]]:
@@ -37,9 +38,15 @@ async def _get_cached_robot_catalog() -> list[dict[str, Any]]:
         cached_at, cached_data = _robot_cache
         if now - cached_at < _ROBOT_CACHE_TTL:
             return cached_data
-    catalog = await RobotCatalogService().list_robots(active_only=True)
-    _robot_cache = (now, catalog)
-    return catalog
+    async with _robot_cache_lock:
+        # Double-check after acquiring lock (another request may have refreshed)
+        if _robot_cache is not None:
+            cached_at, cached_data = _robot_cache
+            if time.monotonic() - cached_at < _ROBOT_CACHE_TTL:
+                return cached_data
+        catalog = await RobotCatalogService().list_robots(active_only=True)
+        _robot_cache = (time.monotonic(), catalog)
+        return catalog
 
 
 

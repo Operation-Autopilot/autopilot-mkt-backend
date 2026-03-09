@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 # Webhook replay prevention — in-memory event ID tracking
+# TODO: Replace with Redis/DB-backed dedup for multi-worker deployments
 _processed_events: dict[str, float] = {}  # event_id -> timestamp
 _EVENT_TTL = 3600  # 1 hour
 
