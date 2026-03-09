@@ -114,6 +114,10 @@ class RobotResponse(BaseModel):
     specs: list[str] = Field(default_factory=list, description="Technical specifications")
     image_url: str | None = Field(default=None, description="Product image URL")
     active: bool = Field(default=True, description="Whether product is active")
+    model_glb_url: str | None = Field(default=None, description="3D model GLB URL")
+    model_usdz_url: str | None = Field(default=None, description="3D model USDZ URL")
+    model_poster_url: str | None = Field(default=None, description="3D model poster image URL")
+    has_3d_model: bool = Field(default=False, description="Whether robot has a 3D model")
 
     # Computed fields for frontend camelCase compatibility
     @computed_field

@@ -20,6 +20,7 @@ from src.api.routes import (
     health,
     invitations,
     profiles,
+    robot_models,
     robots,
     sessions,
     webhooks,
@@ -146,6 +147,9 @@ def create_app() -> FastAPI:
 
     # Robot catalog routes
     api_v1_router.include_router(robots.router)
+
+    # Robot 3D model routes
+    api_v1_router.include_router(robot_models.router)
 
     # Floor plan analysis routes
     api_v1_router.include_router(floor_plans.router)

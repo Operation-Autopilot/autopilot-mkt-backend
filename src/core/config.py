@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     max_request_body_size: int = Field(default=11534336, description="Max request body size in bytes (11MB, supports floor plan uploads)")
     max_message_length: int = Field(default=4000, description="Max message content length in characters")
 
+    # 3D Models
+    robot_models_bucket: str = Field(default="robot-models", description="Supabase storage bucket for 3D robot models")
+
     # LLM Recommendations
     use_llm_recommendations: bool = Field(default=True, description="Use LLM for intelligent recommendations (fallback to manual if False)")
     recommendation_cache_ttl: int = Field(default=3600, description="TTL for recommendation cache in seconds (1 hour)")
