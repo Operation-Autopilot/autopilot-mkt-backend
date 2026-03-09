@@ -61,6 +61,20 @@ class ROICalculationRequest(BaseModel):
     )
 
 
+class SavingsBreakdown(BaseModel):
+    """Line-item breakdown of savings calculation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    current_monthly_cost: float = Field(description="Current monthly cleaning spend")
+    residual_labor_cost: float = Field(description="Remaining labor cost after automation")
+    robot_lease_cost: float = Field(description="Monthly robot lease cost")
+    robot_maintenance_cost: float = Field(description="Monthly maintenance cost")
+    gross_savings: float = Field(description="Savings before efficiency bonus")
+    efficiency_bonus: float = Field(description="Modest indirect benefits (5% of current spend)")
+    net_savings: float = Field(description="Final net savings (capped at current spend)")
+
+
 class ROICalculation(BaseModel):
     """ROI calculation result for a specific robot."""
 
@@ -95,6 +109,12 @@ class ROICalculation(BaseModel):
     payback_months: float | None = Field(
         default=None,
         description="Months until robot pays for itself (null if no savings)"
+    )
+
+    # Savings breakdown (v2.1.0+)
+    savings_breakdown: SavingsBreakdown | None = Field(
+        default=None,
+        description="Line-item breakdown of savings calculation"
     )
 
     # Metadata

@@ -125,6 +125,39 @@ def _detect_question_from_chips(chips: list[str] | None) -> str | None:
     return None
 
 
+# Keywords in assistant messages that indicate which question was asked.
+# Used as fallback when chips are absent (e.g. free-text questions like company_name).
+_QUESTION_CONTENT_PATTERNS: dict[str, list[str]] = {
+    "company_name": ["company name", "name of your company", "name of your business", "who are you", "what company"],
+    "company_type": ["type of company", "type of facility", "kind of facility", "what type of", "what kind of"],
+    "courts_count": ["how many courts", "how many indoor", "how many areas", "facility size", "how big"],
+    "method": ["cleaning method", "how do you clean", "primary cleaning"],
+    "frequency": ["how often", "how frequently", "cleaning frequency", "times per week"],
+    "duration": ["how long does", "cleaning session take", "hours per session", "duration"],
+    "monthly_spend": ["monthly spend", "cleaning budget", "monthly cleaning", "spend on cleaning"],
+}
+
+
+def _detect_question_from_content(content: str) -> str | None:
+    """Detect which question was asked by matching assistant message content.
+
+    Fallback for chip-based detection — handles free-text questions like company_name.
+
+    Args:
+        content: The assistant message text.
+
+    Returns:
+        The question key if detected, None otherwise.
+    """
+    if not content:
+        return None
+    content_lower = content.lower()
+    for key, patterns in _QUESTION_CONTENT_PATTERNS.items():
+        if any(p in content_lower for p in patterns):
+            return key
+    return None
+
+
 def clear_sales_knowledge_cache(conversation_id: UUID | None = None) -> int:
     """Clear sales knowledge cache entries.
 
@@ -1350,8 +1383,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                     if not last_question_asked:
                         last_chips = msg_metadata.get("chips", [])
                         last_question_asked = _detect_question_from_chips(last_chips)
-                    if last_question_asked:
-                        logger.debug("Last question asked: %s", last_question_asked)
+                # Fall back to content-based detection for chipless questions (e.g. company_name)
+                if not last_question_asked:
+                    last_question_asked = _detect_question_from_content(msg.get("content", ""))
+                if last_question_asked:
+                    logger.debug("Last question asked: %s", last_question_asked)
                 break
 
         # Build discovery-specific prompt with robot catalog, recommendations, and current message
@@ -1448,6 +1484,8 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
 
         # Detect which question is being asked in this response (for tracking)
         question_asked = _detect_question_from_chips(result.get("chips"))
+        if not question_asked:
+            question_asked = _detect_question_from_content(result.get("content", ""))
 
         # Store agent response with chips in metadata
         agent_msg_data = await self.conversation_service.add_message(
