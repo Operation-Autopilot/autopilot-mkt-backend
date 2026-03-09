@@ -424,7 +424,7 @@ class FloorPlanService:
         image_url = f"data:{mime_type};base64,{base64_image}"
 
         # Call GPT-4o Vision
-        response = self.openai_client.chat.create(
+        response = await self.openai_client.chat.create(
             model="gpt-4o",
             messages=[
                 {

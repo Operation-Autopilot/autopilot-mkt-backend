@@ -1,5 +1,6 @@
 """Robot catalog business logic service."""
 
+import asyncio
 import logging
 import re
 from collections import Counter
@@ -61,6 +62,10 @@ class RobotCatalogService:
         self.client = get_supabase_client()
         self._rag_service = rag_service
 
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
+
     @property
     def rag_service(self) -> RAGService:
         """Get RAG service."""
@@ -83,7 +88,7 @@ class RobotCatalogService:
             query = query.eq("active", True)
 
         query = query.order("name")
-        response = query.execute()
+        response = await self._execute_sync(query)
 
         return response.data or []
 
@@ -129,7 +134,7 @@ class RobotCatalogService:
             )
 
         # Execute query
-        response = query.execute()
+        response = await self._execute_sync(query)
         robots = response.data or []
 
         # Apply array-based filters in Python (Supabase array filtering is limited)
@@ -368,13 +373,13 @@ class RobotCatalogService:
         Returns:
             dict | None: The robot data or None if not found.
         """
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select("*")
             .eq("id", str(robot_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data if response and response.data else None
 
@@ -396,7 +401,7 @@ class RobotCatalogService:
         """
         from src.core.config import get_settings
 
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select(
                 "id, name, monthly_lease, stripe_product_id, stripe_lease_price_id, "
@@ -404,8 +409,8 @@ class RobotCatalogService:
             )
             .eq("id", str(robot_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if not response.data:
             return None
@@ -439,12 +444,12 @@ class RobotCatalogService:
             return []
 
         id_strings = [str(rid) for rid in robot_ids]
-        response = (
+        query = (
             self.client.table("robot_catalog")
             .select("*")
             .in_("id", id_strings)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data or []
 
@@ -469,9 +474,10 @@ class RobotCatalogService:
             )
 
             # Update robot with embedding_id
-            self.client.table("robot_catalog").update(
+            query = self.client.table("robot_catalog").update(
                 {"embedding_id": embedding_id}
-            ).eq("id", str(robot_id)).execute()
+            ).eq("id", str(robot_id))
+            await self._execute_sync(query)
 
             logger.info(f"Indexed robot {robot_id}")
             return embedding_id
@@ -501,9 +507,10 @@ class RobotCatalogService:
                 )
 
                 # Update robot with embedding_id
-                self.client.table("robot_catalog").update(
+                query = self.client.table("robot_catalog").update(
                     {"embedding_id": embedding_id}
-                ).eq("id", robot["id"]).execute()
+                ).eq("id", robot["id"])
+                await self._execute_sync(query)
 
                 indexed += 1
 

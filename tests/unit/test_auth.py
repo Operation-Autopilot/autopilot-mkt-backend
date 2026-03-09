@@ -4,13 +4,15 @@ import time
 from unittest.mock import patch
 
 import pytest
-from jose import jwt
+from cryptography.hazmat.primitives.asymmetric import ec
+from jose import jwt as jose_jwt
 
 from src.api.middleware.auth import AuthError, AuthErrorCode, decode_jwt
 
 
-# Test JWT secret for unit tests
-TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests"
+# Generate a test EC key pair for ES256
+_test_private_key = ec.generate_private_key(ec.SECP256R1())
+_test_public_key = _test_private_key.public_key()
 
 
 def create_test_token(
@@ -18,22 +20,10 @@ def create_test_token(
     email: str | None = "test@example.com",
     role: str | None = "user",
     exp_offset: int = 3600,
-    secret: str = TEST_JWT_SECRET,
-    algorithm: str = "HS256",
+    private_key=_test_private_key,
+    algorithm: str = "ES256",
 ) -> str:
-    """Create a test JWT token.
-
-    Args:
-        sub: Subject (user ID).
-        email: User email.
-        role: User role.
-        exp_offset: Seconds from now for expiration (negative for expired).
-        secret: JWT secret for signing.
-        algorithm: Signing algorithm.
-
-    Returns:
-        str: Encoded JWT token.
-    """
+    """Create a test JWT token signed with ES256."""
     now = int(time.time())
     payload = {
         "sub": sub,
@@ -44,17 +34,17 @@ def create_test_token(
         "aud": "authenticated",
         "iss": "https://test.supabase.co/auth/v1",
     }
-    return jwt.encode(payload, secret, algorithm=algorithm)
+    # Remove None values to test optional fields
+    payload = {k: v for k, v in payload.items() if v is not None}
+    return jose_jwt.encode(payload, private_key, algorithm=algorithm)
 
 
 class TestDecodeJWT:
     """Tests for decode_jwt function."""
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_with_valid_token(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_with_valid_token(self, mock_key) -> None:
         """Test decode_jwt successfully decodes a valid token."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
         token = create_test_token()
         payload = decode_jwt(token)
 
@@ -62,12 +52,9 @@ class TestDecodeJWT:
         assert payload.email == "test@example.com"
         assert payload.role == "user"
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_with_expired_token(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_with_expired_token(self, mock_key) -> None:
         """Test decode_jwt raises AuthError for expired token."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
-        # Create token that expired 1 hour ago
         token = create_test_token(exp_offset=-3600)
 
         with pytest.raises(AuthError) as exc_info:
@@ -76,52 +63,44 @@ class TestDecodeJWT:
         assert exc_info.value.code == AuthErrorCode.TOKEN_EXPIRED
         assert "expired" in exc_info.value.message.lower()
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_with_invalid_signature(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_with_invalid_signature(self, mock_key) -> None:
         """Test decode_jwt raises AuthError for invalid signature."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
-        # Create token with wrong secret
-        token = create_test_token(secret="wrong-secret")
+        # Create token with a different key
+        other_key = ec.generate_private_key(ec.SECP256R1())
+        token = create_test_token(private_key=other_key)
 
         with pytest.raises(AuthError) as exc_info:
             decode_jwt(token)
 
         assert exc_info.value.code in [AuthErrorCode.INVALID_SIGNATURE, AuthErrorCode.INVALID_TOKEN]
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_with_malformed_token(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_with_malformed_token(self, mock_key) -> None:
         """Test decode_jwt raises AuthError for malformed token."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
         with pytest.raises(AuthError) as exc_info:
             decode_jwt("not-a-valid-jwt-token")
 
         assert exc_info.value.code == AuthErrorCode.INVALID_TOKEN
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_with_empty_token(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_with_empty_token(self, mock_key) -> None:
         """Test decode_jwt raises AuthError for empty token."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
         with pytest.raises(AuthError) as exc_info:
             decode_jwt("")
 
         assert exc_info.value.code == AuthErrorCode.INVALID_TOKEN
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_missing_sub_claim(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_missing_sub_claim(self, mock_key) -> None:
         """Test decode_jwt raises AuthError when sub claim is missing."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
-        # Create token without sub claim
         now = int(time.time())
         payload = {
             "email": "test@example.com",
             "exp": now + 3600,
             "iat": now,
         }
-        token = jwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
+        token = jose_jwt.encode(payload, _test_private_key, algorithm="ES256")
 
         with pytest.raises(AuthError) as exc_info:
             decode_jwt(token)
@@ -129,11 +108,9 @@ class TestDecodeJWT:
         assert exc_info.value.code == AuthErrorCode.INVALID_TOKEN
         assert "sub" in exc_info.value.message.lower()
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_converts_to_user_context(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_converts_to_user_context(self, mock_key) -> None:
         """Test that token payload can be converted to UserContext."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
         token = create_test_token()
         payload = decode_jwt(token)
         user_context = payload.to_user_context()
@@ -142,11 +119,9 @@ class TestDecodeJWT:
         assert user_context.email == "test@example.com"
         assert user_context.role == "user"
 
-    @patch("src.api.middleware.auth.get_settings")
-    def test_decode_jwt_optional_fields(self, mock_settings: any) -> None:
+    @patch("src.api.middleware.auth.get_signing_key", return_value=_test_public_key)
+    def test_decode_jwt_optional_fields(self, mock_key) -> None:
         """Test decode_jwt handles missing optional fields."""
-        mock_settings.return_value.supabase_signing_key_jwk = TEST_JWT_SECRET
-
         token = create_test_token(email=None, role=None)
         payload = decode_jwt(token)
 

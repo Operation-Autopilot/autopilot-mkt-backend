@@ -205,7 +205,7 @@ class TestBUG05ResponsesTooLong:
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "Short response"
         mock_response.usage = None
-        mock_openai.chat.create.return_value = mock_response
+        mock_openai.chat.create = AsyncMock(return_value=mock_response)
 
         conversation = {"id": "770e8400-e29b-41d4-a716-446655440000", "phase": "discovery"}
         user_msg = {

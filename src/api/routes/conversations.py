@@ -684,23 +684,9 @@ async def send_message(
         agent_message = result["agent_message"]
         chips = result["chips"]
 
-        # Build discovery state from session or discovery profile
-        current_answers: dict = {}
-        if profile_id:
-            # Authenticated user - get answers from discovery profile
-            discovery_service = DiscoveryProfileService()
-            discovery_profile = await discovery_service.get_by_profile_id(profile_id)
-            if discovery_profile:
-                current_answers = discovery_profile.get("answers", {})
-        elif session_id:
-            # Anonymous user - get answers from session
-            session_service = SessionService()
-            session = await session_service.get_session_by_id(session_id)
-            if session:
-                current_answers = session.get("answers", {})
-
-        answered_keys = list(current_answers.keys())
-        missing_keys = [k for k in REQUIRED_QUESTION_KEYS if k not in current_answers]
+        # Build discovery state from data already computed in generate_discovery_response
+        answered_keys = result.get("answered_keys", [])
+        missing_keys = result.get("missing_keys", [])
         progress = int((len(answered_keys) / len(REQUIRED_QUESTION_KEYS)) * 100) if REQUIRED_QUESTION_KEYS else 0
 
         discovery_state = DiscoveryState(

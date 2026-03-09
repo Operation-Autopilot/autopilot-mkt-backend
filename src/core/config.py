@@ -6,6 +6,36 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# Model presets for quick switching via OPENAI_MODEL_PRESET env var
+MODEL_PRESETS = {
+    "performance": {
+        "openai_model": "gpt-4o-mini",
+        "openai_model_fast": "gpt-4o-mini",
+        "openai_model_scoring": "gpt-4o-mini",
+    },
+    "balanced": {
+        "openai_model": "gpt-4o",
+        "openai_model_fast": "gpt-4o-mini",
+        "openai_model_scoring": "gpt-4o-mini",
+    },
+    "quality": {
+        "openai_model": "gpt-4o",
+        "openai_model_fast": "gpt-4o",
+        "openai_model_scoring": "gpt-4o",
+    },
+    "gpt5-nano": {
+        "openai_model": "gpt-5-nano",
+        "openai_model_fast": "gpt-5-nano",
+        "openai_model_scoring": "gpt-5-nano",
+    },
+    "gpt5-mini": {
+        "openai_model": "gpt-5-mini",
+        "openai_model_fast": "gpt-5-nano",
+        "openai_model_scoring": "gpt-5-nano",
+    },
+}
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
 
@@ -51,6 +81,8 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model: str = Field(default="gpt-4o", description="OpenAI model to use for main conversations")
     openai_model_fast: str = Field(default="gpt-4o-mini", description="Fast OpenAI model for simple tasks (greetings, etc)")
+    openai_model_scoring: str = Field(default="gpt-4o-mini", description="OpenAI model for recommendation scoring")
+    openai_model_preset: str | None = Field(default=None, description="Model preset name (performance/balanced/quality/gpt5-nano/gpt5-mini). Overrides individual model settings.")
     max_context_messages: int = Field(default=20, description="Max messages to include in context")
     mock_openai: bool | None = Field(default=None, description="Mock OpenAI responses for local testing (saves tokens). Auto-enabled in development, disabled in production.")
 
@@ -124,6 +156,16 @@ class Settings(BaseSettings):
             # Development/Staging: True  
             self.mock_openai = self.app_env != "production"
         
+        return self
+
+    @model_validator(mode="after")
+    def apply_model_preset(self) -> "Settings":
+        """Apply model preset if set, overriding individual model settings."""
+        if self.openai_model_preset and self.openai_model_preset in MODEL_PRESETS:
+            preset = MODEL_PRESETS[self.openai_model_preset]
+            self.openai_model = preset["openai_model"]
+            self.openai_model_fast = preset["openai_model_fast"]
+            self.openai_model_scoring = preset["openai_model_scoring"]
         return self
 
     @property

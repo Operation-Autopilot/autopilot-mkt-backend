@@ -248,8 +248,8 @@ class RecommendationService:
 
         # Call LLM
         try:
-            response = self.client.chat.create(
-                model=self.settings.openai_model,
+            response = await self.client.chat.create(
+                model=self.settings.openai_model_scoring,
                 messages=[
                     {"role": "system", "content": SCORING_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},

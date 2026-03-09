@@ -5,7 +5,7 @@ import time
 from functools import lru_cache, wraps
 from typing import Any, Callable, TypeVar
 
-from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, RateLimitError
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -144,7 +144,7 @@ class TimedOpenAIClient:
     - Metrics collection for monitoring
     """
 
-    def __init__(self, client: OpenAI):
+    def __init__(self, client: AsyncOpenAI):
         self._client = client
         self._metrics = get_openai_metrics()
         self._settings = get_settings()
@@ -178,11 +178,11 @@ class TimedChatCompletions:
         wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
         reraise=True,
     )
-    def _create_with_retry(self, **kwargs: Any) -> Any:
+    async def _create_with_retry(self, **kwargs: Any) -> Any:
         """Create chat completion with retry logic."""
-        return self._completions.create(**kwargs)
+        return await self._completions.create(**kwargs)
 
-    def create(self, **kwargs: Any) -> Any:
+    async def create(self, **kwargs: Any) -> Any:
         """Create a chat completion with timing and optional retry.
 
         Args:
@@ -199,7 +199,7 @@ class TimedChatCompletions:
 
         try:
             # Use retry wrapper
-            response = self._create_with_retry(**kwargs)
+            response = await self._create_with_retry(**kwargs)
 
             # Extract token usage if available
             if hasattr(response, "usage") and response.usage:
@@ -268,11 +268,11 @@ class TimedEmbeddings:
         wait=wait_exponential(multiplier=1, min=MIN_WAIT_SECONDS, max=MAX_WAIT_SECONDS),
         reraise=True,
     )
-    def _create_with_retry(self, **kwargs: Any) -> Any:
+    async def _create_with_retry(self, **kwargs: Any) -> Any:
         """Create embedding with retry logic."""
-        return self._embeddings.create(**kwargs)
+        return await self._embeddings.create(**kwargs)
 
-    def create(self, **kwargs: Any) -> Any:
+    async def create(self, **kwargs: Any) -> Any:
         """Create embeddings with timing and optional retry.
 
         Args:
@@ -288,7 +288,7 @@ class TimedEmbeddings:
         tokens_used = None
 
         try:
-            response = self._create_with_retry(**kwargs)
+            response = await self._create_with_retry(**kwargs)
 
             if hasattr(response, "usage") and response.usage:
                 tokens_used = response.usage.total_tokens
@@ -344,5 +344,5 @@ def get_openai_client() -> TimedOpenAIClient:
         TimedOpenAIClient: OpenAI client instance with performance monitoring.
     """
     settings = get_settings()
-    raw_client = OpenAI(api_key=settings.openai_api_key)
+    raw_client = AsyncOpenAI(api_key=settings.openai_api_key)
     return TimedOpenAIClient(raw_client)

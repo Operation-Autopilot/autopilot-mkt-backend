@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from hashlib import sha256
@@ -46,6 +47,10 @@ class DiscoveryProfileService:
         """Initialize discovery profile service with Supabase client."""
         self.client = get_supabase_client()
 
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
+
     async def get_or_create(self, profile_id: UUID) -> dict[str, Any]:
         """Get existing discovery profile or create a new one.
 
@@ -56,12 +61,12 @@ class DiscoveryProfileService:
             dict: The discovery profile data.
         """
         # First try to get existing profile
-        response = (
+        query = (
             self.client.table("discovery_profiles")
             .select("*")
             .eq("profile_id", str(profile_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             return response.data[0]
@@ -75,11 +80,11 @@ class DiscoveryProfileService:
             "selected_product_ids": [],
         }
 
-        response = (
+        query = (
             self.client.table("discovery_profiles")
             .insert(profile_data)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if not response.data:
             raise ValueError("Failed to create discovery profile")
@@ -95,13 +100,13 @@ class DiscoveryProfileService:
             dict | None: The discovery profile data or None if not found.
         """
         logger.debug("Looking up discovery_profile for profile_id=%s", profile_id)
-        response = (
+        query = (
             self.client.table("discovery_profiles")
             .select("*")
             .eq("profile_id", str(profile_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response and response.data:
             answers = response.data.get("answers", {})
@@ -164,12 +169,12 @@ class DiscoveryProfileService:
             # No changes, return current profile
             return await self.get_by_profile_id(profile_id)
 
-        response = (
+        query = (
             self.client.table("discovery_profiles")
             .update(update_data)
             .eq("profile_id", str(profile_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
 
@@ -204,20 +209,20 @@ class DiscoveryProfileService:
 
         if existing:
             # Update existing profile (merge session data)
-            response = (
+            query = (
                 self.client.table("discovery_profiles")
                 .update(profile_data)
                 .eq("profile_id", str(profile_id))
-                .execute()
             )
+            response = await self._execute_sync(query)
         else:
             # Create new profile
             profile_data["profile_id"] = str(profile_id)
-            response = (
+            query = (
                 self.client.table("discovery_profiles")
                 .insert(profile_data)
-                .execute()
             )
+            response = await self._execute_sync(query)
 
         return response.data[0]
 
@@ -275,10 +280,11 @@ class DiscoveryProfileService:
         answers_hash = compute_answers_hash(answers)
 
         try:
-            self.client.table("discovery_profiles").update({
+            query = self.client.table("discovery_profiles").update({
                 "answers_hash": answers_hash,
                 "cached_recommendations": recommendations,
-            }).eq("profile_id", str(profile_id)).execute()
+            }).eq("profile_id", str(profile_id))
+            await self._execute_sync(query)
 
             logger.info(
                 "Cached recommendations for profile %s (hash: %s)",
@@ -295,10 +301,11 @@ class DiscoveryProfileService:
             profile_id: The user's profile UUID.
         """
         try:
-            self.client.table("discovery_profiles").update({
+            query = self.client.table("discovery_profiles").update({
                 "answers_hash": None,
                 "cached_recommendations": None,
-            }).eq("profile_id", str(profile_id)).execute()
+            }).eq("profile_id", str(profile_id))
+            await self._execute_sync(query)
 
             logger.debug("Invalidated recommendations cache for profile %s", profile_id)
         except Exception as e:
@@ -355,12 +362,12 @@ class DiscoveryProfileService:
         }
 
         try:
-            response = (
+            query = (
                 self.client.table("discovery_profiles")
                 .update(update_data)
                 .eq("profile_id", str(profile_id))
-                .execute()
             )
+            response = await self._execute_sync(query)
 
             # Invalidate recommendations cache since answers changed
             await self.invalidate_recommendations_cache(profile_id)

@@ -24,6 +24,24 @@ from src.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
 
+# Module-level TTL cache for robot catalog to avoid repeated DB fetches
+_robot_cache: tuple[float, list] | None = None
+_ROBOT_CACHE_TTL = 300  # 5 minutes
+
+
+async def _get_cached_robot_catalog() -> list[dict[str, Any]]:
+    """Get robot catalog with in-memory TTL cache (5 min)."""
+    global _robot_cache
+    now = time.monotonic()
+    if _robot_cache is not None:
+        cached_at, cached_data = _robot_cache
+        if now - cached_at < _ROBOT_CACHE_TTL:
+            return cached_data
+    catalog = await RobotCatalogService().list_robots(active_only=True)
+    _robot_cache = (now, catalog)
+    return catalog
+
+
 
 def _sanitize_answer_value(ans: Any) -> str:
     """Sanitize an answer value for safe inclusion in prompts.
@@ -356,7 +374,7 @@ class AgentService:
             ConversationPhase.GREENLIGHT,
             ConversationPhase.ROI,
         ):
-            product_context = await self.rag_service.get_relevant_products_for_context(
+            product_context = await self.rag_service.get_relevant_robots_for_context(
                 query=current_message,
                 top_k=5,
             )
@@ -468,7 +486,7 @@ class AgentService:
 
             try:
                 # Call OpenAI API
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=context,  # type: ignore[arg-type]
                     max_completion_tokens=400,
@@ -765,7 +783,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         else:
             try:
                 # Use fast model for greetings to reduce latency (3-5s -> ~1s)
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model_fast,
                     messages=[
                         {"role": "system", "content": greeting_prompt},
@@ -978,7 +996,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             result = {"content": content, "chips": default_chips}
         else:
             try:
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=[
                         {"role": "system", "content": prompt},
@@ -1158,12 +1176,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         from src.services.discovery_profile_service import DiscoveryProfileService
         from src.services.company_service import CompanyService
 
-        robot_catalog_service = RobotCatalogService()
         discovery_service = None
         current_answers: dict[str, Any] = {}
 
         async def fetch_robot_catalog() -> list[dict[str, Any]]:
-            return await robot_catalog_service.list_robots(active_only=True)
+            return await _get_cached_robot_catalog()
 
         async def fetch_user_context() -> tuple[dict[str, Any], Any, dict | None]:
             """Fetch user context (answers, discovery_service, company)."""
@@ -1384,7 +1401,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                     )
 
             try:
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=messages,  # type: ignore[arg-type]
                     response_format=DISCOVERY_RESPONSE_SCHEMA,
@@ -1458,4 +1475,6 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             "ready_for_roi": result["ready_for_roi"],
             "user_message": user_msg_response,
             "agent_message": agent_msg_response,
+            "answered_keys": list(answered_keys),
+            "missing_keys": [q["key"] for q in missing_questions],
         }

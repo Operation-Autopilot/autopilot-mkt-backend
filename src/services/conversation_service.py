@@ -52,7 +52,8 @@ class ConversationService:
         if data and data.company_id:
             conversation_data["company_id"] = str(data.company_id)
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
 
         if not response.data:
             raise ValueError("Database operation returned no data")
@@ -67,13 +68,13 @@ class ConversationService:
         Returns:
             dict | None: The conversation data or None if not found.
         """
-        response = (
+        query = (
             self.client.table("conversations")
             .select("*")
             .eq("id", str(conversation_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data if response and response.data else None
 
@@ -151,7 +152,7 @@ class ConversationService:
         if cursor:
             query = query.lt("created_at", cursor)
 
-        response = query.execute()
+        response = await self._execute_sync(query)
         rows = response.data or []
 
         # Check if there are more results
@@ -214,13 +215,13 @@ class ConversationService:
 
         # Query all messages for these conversations, ordered by created_at desc
         # Then we'll extract the first (most recent) message per conversation
-        response = (
+        query = (
             self.client.table("messages")
             .select("conversation_id, created_at")
             .in_("conversation_id", conversation_ids)
             .order("created_at", desc=True)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         # Build a map of conversation_id -> most recent created_at
         # Since results are ordered desc, the first occurrence of each
@@ -241,14 +242,14 @@ class ConversationService:
 
         Note: For batch operations, use _get_last_message_times_batch instead.
         """
-        response = (
+        query = (
             self.client.table("messages")
             .select("created_at")
             .eq("conversation_id", str(conversation_id))
             .order("created_at", desc=True)
             .limit(1)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             return response.data[0]["created_at"]
@@ -263,9 +264,10 @@ class ConversationService:
         Returns:
             bool: True if deleted successfully.
         """
-        self.client.table("conversations").delete().eq(
+        query = self.client.table("conversations").delete().eq(
             "id", str(conversation_id)
-        ).execute()
+        )
+        await self._execute_sync(query)
 
         return True
 
@@ -281,12 +283,12 @@ class ConversationService:
         Returns:
             dict | None: Updated conversation or None.
         """
-        response = (
+        query = (
             self.client.table("conversations")
             .update({"phase": phase.value})
             .eq("id", str(conversation_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
 
@@ -359,7 +361,7 @@ class ConversationService:
         if cursor:
             query = query.gt("created_at", cursor)
 
-        response = query.execute()
+        response = await self._execute_sync(query)
         rows = response.data or []
 
         has_more = len(rows) > page_size
@@ -396,14 +398,14 @@ class ConversationService:
         Returns:
             list[dict]: Recent messages ordered oldest first.
         """
-        response = (
+        query = (
             self.client.table("messages")
             .select("*")
             .eq("conversation_id", str(conversation_id))
             .order("created_at", desc=True)
             .limit(limit)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         # Reverse to get oldest first (chronological order)
         messages = response.data or []
@@ -435,7 +437,8 @@ class ConversationService:
             "metadata": metadata or {},
         }
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
 
         if not response.data:
             raise ValueError("Database operation returned no data")
@@ -479,12 +482,12 @@ class ConversationService:
             dict | None: Updated conversation or None if not found.
         """
         # Update conversation to be owned by profile instead of session
-        response = (
+        query = (
             self.client.table("conversations")
             .update({"profile_id": str(profile_id), "session_id": None})
             .eq("id", str(conversation_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
 
@@ -500,13 +503,13 @@ class ConversationService:
         Returns:
             list[dict]: List of conversation data.
         """
-        response = (
+        query = (
             self.client.table("conversations")
             .select("*")
             .eq("session_id", str(session_id))
             .order("created_at", desc=True)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data or []
 
@@ -530,14 +533,14 @@ class ConversationService:
             tuple: (conversation_data, is_new) where is_new indicates if created.
         """
         # Try to get most recent conversation for this profile
-        response = (
+        query = (
             self.client.table("conversations")
             .select("*")
             .eq("profile_id", str(profile_id))
             .order("updated_at", desc=True)
             .limit(1)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             # Return existing conversation
@@ -555,7 +558,8 @@ class ConversationService:
         if company_id:
             conversation_data["company_id"] = str(company_id)
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
         if not response.data:
             raise ValueError("Database operation returned no data")
         return response.data[0], True
@@ -590,7 +594,8 @@ class ConversationService:
         if company_id:
             conversation_data["company_id"] = str(company_id)
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
         if not response.data:
             raise ValueError("Database operation returned no data")
         return response.data[0]
@@ -621,7 +626,8 @@ class ConversationService:
             "metadata": metadata,
         }
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
         if not response.data:
             raise ValueError("Database operation returned no data")
         return response.data[0]
@@ -644,14 +650,14 @@ class ConversationService:
             tuple: (conversation_data, is_new) where is_new indicates if created.
         """
         # Check if session already has a conversation
-        response = (
+        query = (
             self.client.table("conversations")
             .select("*")
             .eq("session_id", str(session_id))
             .order("updated_at", desc=True)
             .limit(1)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         if response.data:
             return response.data[0], False
@@ -666,7 +672,8 @@ class ConversationService:
             "metadata": metadata,
         }
 
-        response = self.client.table("conversations").insert(conversation_data).execute()
+        query = self.client.table("conversations").insert(conversation_data)
+        response = await self._execute_sync(query)
         if not response.data:
             raise ValueError("Database operation returned no data")
         return response.data[0], True
