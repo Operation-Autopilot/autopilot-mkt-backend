@@ -1,0 +1,262 @@
+/* Autopilot Marketplace — Custom Theme */
+
+/* --- Fonts --- */
+:root {
+  --vp-font-family-base: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* --- Light Mode Colors --- */
+:root {
+  /* Brand / Primary — Lime Green (matches frontend accent #D4FF3B) */
+  --vp-c-brand-1: #6b8f00;
+  --vp-c-brand-2: #7da600;
+  --vp-c-brand-3: #90bd00;
+  --vp-c-brand-soft: rgba(107, 143, 0, 0.14);
+
+  /* Neutral surfaces */
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #f7f8f6;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f1f3f0;
+
+  /* Text */
+  --vp-c-text-1: #1a1d21;
+  --vp-c-text-2: #4a5568;
+  --vp-c-text-3: #718096;
+
+  /* Tip blocks */
+  --vp-c-tip-1: #6b8f00;
+  --vp-c-tip-2: rgba(212, 255, 59, 0.14);
+  --vp-c-tip-3: rgba(212, 255, 59, 0.28);
+  --vp-c-tip-soft: rgba(212, 255, 59, 0.08);
+
+  --vp-sidebar-bg-color: #f7f8f6;
+}
+
+/* --- Dark Mode Colors --- */
+.dark {
+  --vp-c-brand-1: #D4FF3B;
+  --vp-c-brand-2: #b8e000;
+  --vp-c-brand-3: #90bd00;
+  --vp-c-brand-soft: rgba(212, 255, 59, 0.16);
+
+  --vp-c-bg: #0B0C10;
+  --vp-c-bg-alt: #12141a;
+  --vp-c-bg-elv: #1a1d24;
+  --vp-c-bg-soft: #1a1d24;
+
+  --vp-c-text-1: #F9FAFB;
+  --vp-c-text-2: #a0aec0;
+  --vp-c-text-3: #718096;
+
+  --vp-c-tip-1: #D4FF3B;
+  --vp-c-tip-2: rgba(212, 255, 59, 0.16);
+  --vp-c-tip-3: rgba(212, 255, 59, 0.28);
+
+  --vp-sidebar-bg-color: #12141a;
+}
+
+/* --- Hero Section --- */
+.VPHero .name {
+  background: linear-gradient(135deg, #D4FF3B 0%, #90bd00 50%, #6b8f00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .VPHero .name {
+  background: linear-gradient(135deg, #D4FF3B 0%, #b8e000 50%, #90bd00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* --- Home Features --- */
+.VPFeature {
+  border-color: var(--vp-c-brand-soft) !important;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-1) !important;
+  box-shadow: 0 2px 12px var(--vp-c-brand-soft);
+}
+
+/* --- Severity/Status Badges --- */
+.badge-critical {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e53e3e;
+}
+
+.badge-high {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e17055;
+}
+
+.badge-medium {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #ffd93d;
+}
+
+.badge-low {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #a0d2db;
+}
+
+.badge-resolved {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #38a169;
+}
+
+.badge-open {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e53e3e;
+}
+
+.badge-active {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #3182ce;
+}
+
+.badge-completed {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #D4FF3B;
+}
+
+.badge-planned {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #cbd5e0;
+}
+
+.badge-deferred {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #a0522d;
+}
+
+/* --- Badge Dark Mode --- */
+.dark .badge-critical { background: #fc5c5c; color: #1a1a1a; }
+.dark .badge-high { background: #e8856e; color: #1a1a1a; }
+.dark .badge-medium { background: #ffe066; color: #1a1a1a; }
+.dark .badge-low { background: #b3dfe6; color: #1a1a1a; }
+.dark .badge-resolved { background: #68d391; color: #1a1a1a; }
+.dark .badge-open { background: #fc5c5c; color: #1a1a1a; }
+.dark .badge-active { background: #63b3ed; color: #1a1a1a; }
+.dark .badge-completed { background: #D4FF3B; color: #1a1a1a; }
+.dark .badge-planned { background: #a0aec0; color: #1a1a1a; }
+.dark .badge-deferred { background: #cd853f; color: #1a1a1a; }
+
+/* --- Sprint Cards --- */
+.sprint-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+  background: var(--vp-c-bg-alt);
+}
+
+.sprint-card h3 {
+  margin-top: 0;
+  color: var(--vp-c-brand-1);
+}
+
+/* --- Stats Grid --- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1rem;
+  border-radius: 8px;
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--vp-c-brand-1);
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: 0.75rem;
+  color: var(--vp-c-text-3);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Code blocks --- */
+.vp-code-group .tabs label {
+  font-family: var(--vp-font-family-mono);
+}
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-brand-soft);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-brand-1);
+}
