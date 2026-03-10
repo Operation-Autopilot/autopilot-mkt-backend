@@ -197,6 +197,11 @@ class TimedChatCompletions:
         error_msg = None
         tokens_used = None
 
+        # gpt-5 models only support temperature=1 (the default).
+        # Strip the parameter rather than letting the API reject the request.
+        if isinstance(model, str) and model.startswith("gpt-5") and "temperature" in kwargs:
+            kwargs = {k: v for k, v in kwargs.items() if k != "temperature"}
+
         try:
             # Use retry wrapper
             response = await self._create_with_retry(**kwargs)
