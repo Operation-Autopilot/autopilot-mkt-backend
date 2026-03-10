@@ -33,6 +33,11 @@ MODEL_PRESETS = {
         "openai_model_fast": "gpt-5-nano",
         "openai_model_scoring": "gpt-5-nano",
     },
+    "gpt4-1-mini": {
+        "openai_model": "gpt-4.1-mini",
+        "openai_model_fast": "gpt-4.1-mini",
+        "openai_model_scoring": "gpt-4.1-mini",
+    },
 }
 
 
@@ -127,8 +132,15 @@ class Settings(BaseSettings):
 
     # Gynger B2B Financing
     gynger_api_key: str = Field(default="", description="Gynger vendor API key")
-    gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")  # VERIFY: confirm exact base URL with Gynger before enabling in production
-    gynger_webhook_secret: str = Field(default="", description="Gynger webhook signing secret")
+    gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")
+    gynger_webhook_secret: str = Field(default="", description="Gynger webhook secret (returned when registering webhook via POST /v1/webhooks)")
+    gynger_checkout_base_url: str = Field(default="https://app.gynger.io", description="Gynger checkout base URL — application URL constructed as {base}/{session_id}. Sandbox: https://sandbox.app.gynger.io")
+
+    # HubSpot CRM
+    hubspot_access_token: str = Field(default="", description="HubSpot Private App token (pat-na2-...)")
+    hubspot_pipeline_id: str = Field(default="default", description="HubSpot deal pipeline ID")
+    hubspot_deal_stage_lead: str = Field(default="appointmentscheduled", description="HubSpot deal stage on signup (Lead)")
+    hubspot_deal_stage_closed_won: str = Field(default="1620590298", description="HubSpot deal stage on payment (Closed Won)")
 
     @field_validator(
         "stripe_secret_key",

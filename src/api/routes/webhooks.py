@@ -156,17 +156,17 @@ async def stripe_webhook(request: Request) -> dict[str, str]:
     "/gynger",
     status_code=status.HTTP_200_OK,
     summary="Handle Gynger webhooks",
-    description="Receives and processes Gynger financing webhook events. Requires valid signature.",
+    description="Receives and processes Gynger financing webhook events. Verified via Authorization header.",
 )
 async def gynger_webhook(request: Request) -> dict[str, str]:
     """Handle Gynger webhook events.
 
-    Processes Gynger financing application status updates.
+    Gynger webhook auth: Gynger sends the webhook secret as the raw Authorization
+    header value (no 'Bearer' prefix). We compare it directly to GYNGER_WEBHOOK_SECRET.
 
     Handles:
-    - application.approved: Updates order to completed status
-    - application.rejected: Updates order to cancelled status
-    - application.pending: Logged only (no action needed)
+    - offer.status.updated: ACTIVE/ACCEPTED/PAID → completed; DECLINED/CANCELED → cancelled
+    - checkout.session.status.updated: OFFER_CREATED (informational); EXPIRED → cancel pending order
 
     Args:
         request: FastAPI request object.
@@ -175,29 +175,37 @@ async def gynger_webhook(request: Request) -> dict[str, str]:
         dict: Acknowledgment message.
 
     Raises:
-        HTTPException: 400 if signature is invalid.
+        HTTPException: 400 if Authorization header is missing or invalid.
     """
-    # Get raw body for signature verification
     payload = await request.body()
 
-    # TODO: confirm header name with Gynger docs
-    sig_header = request.headers.get("x-gynger-signature") or request.headers.get("x-signature")
-    if not sig_header:
-        logger.error("Missing Gynger signature header in webhook request")
+    # Gynger sends the webhook secret as the raw Authorization header value
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header:
+        logger.error("Missing Authorization header in Gynger webhook request")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing webhook signature header",
+            detail="Missing Authorization header",
         )
 
     service = GyngerService()
 
     try:
-        event = service.verify_webhook_signature(payload, sig_header)
+        service.verify_webhook_secret(auth_header)
     except ValueError as e:
-        logger.error("Invalid Gynger webhook signature: %s", str(e))
+        logger.error("Invalid Gynger webhook authorization: %s", str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid signature",
+            detail="Invalid authorization",
+        ) from e
+
+    try:
+        event = service.parse_webhook_payload(payload)
+    except ValueError as e:
+        logger.error("Invalid Gynger webhook payload: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid payload",
         ) from e
 
     # Replay prevention using same in-memory pattern as Stripe webhook handler
@@ -217,18 +225,13 @@ async def gynger_webhook(request: Request) -> dict[str, str]:
     event_type = event.get("type", "")
     logger.info("Processing Gynger webhook event: %s", event_type)
 
-    # TODO: confirm event type names with Gynger docs
-    if event_type == "application.approved":
-        await service.handle_application_approved(event)
-        logger.info("Processed application.approved")
+    if event_type == "offer.status.updated":
+        await service.handle_offer_status_updated(event)
+        logger.info("Processed offer.status.updated")
 
-    elif event_type == "application.rejected":
-        await service.handle_application_rejected(event)
-        logger.info("Processed application.rejected")
-
-    elif event_type == "application.pending":
-        # No action needed — just acknowledge
-        logger.info("Gynger application in pending state (no action required)")
+    elif event_type == "checkout.session.status.updated":
+        await service.handle_session_status_updated(event)
+        logger.info("Processed checkout.session.status.updated")
 
     else:
         logger.debug("Unhandled Gynger webhook event type: %s", event_type)

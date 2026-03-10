@@ -127,13 +127,6 @@ async def create_gynger_session(
     gynger_service = GyngerService()
     robot_service = RobotCatalogService()
 
-    # Validate redirect URLs (reuse existing open-redirect protection)
-    try:
-        checkout_service._validate_redirect_url(str(data.success_url))
-        checkout_service._validate_redirect_url(str(data.cancel_url))
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
     # Get profile context
     profile_id, _ = await _get_profile_for_auth(auth)
     session_id = auth.session.session_id if auth.session else None
@@ -182,13 +175,11 @@ async def create_gynger_session(
         order = order_result.data[0]
         order_id = order["id"]
 
-        # Create Gynger financing application
-        gynger_result = await gynger_service.create_financing_application(
+        # Create Gynger checkout session
+        gynger_result = await gynger_service.create_checkout_session(
             robot=robot,
             amount_cents=amount_cents,
             customer_email=data.customer_email,
-            success_url=str(data.success_url),
-            cancel_url=str(data.cancel_url),
             order_id=str(order_id),
         )
 

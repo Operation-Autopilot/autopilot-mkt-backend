@@ -79,8 +79,6 @@ class GyngerSessionCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     product_id: UUID = Field(description="Robot product UUID to finance")
-    success_url: HttpUrl = Field(description="URL to redirect after Gynger approval")
-    cancel_url: HttpUrl = Field(description="URL to redirect if financing is cancelled")
     customer_email: str | None = Field(default=None, description="Pre-fill customer email in Gynger form")
 
 
