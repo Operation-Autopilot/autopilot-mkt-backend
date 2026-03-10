@@ -1,0 +1,540 @@
+/* Autopilot Marketplace — Custom Theme */
+
+/* --- Fonts --- */
+:root {
+  --vp-font-family-base: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* --- Light Mode Colors --- */
+:root {
+  /* Brand / Primary — Lime Green (matches frontend accent #D4FF3B) */
+  --vp-c-brand-1: #6b8f00;
+  --vp-c-brand-2: #7da600;
+  --vp-c-brand-3: #90bd00;
+  --vp-c-brand-soft: rgba(107, 143, 0, 0.14);
+
+  /* Neutral surfaces */
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #f7f8f6;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f1f3f0;
+
+  /* Text */
+  --vp-c-text-1: #1a1d21;
+  --vp-c-text-2: #4a5568;
+  --vp-c-text-3: #718096;
+
+  /* Tip blocks */
+  --vp-c-tip-1: #6b8f00;
+  --vp-c-tip-2: rgba(212, 255, 59, 0.14);
+  --vp-c-tip-3: rgba(212, 255, 59, 0.28);
+  --vp-c-tip-soft: rgba(212, 255, 59, 0.08);
+
+  --vp-sidebar-bg-color: #f7f8f6;
+}
+
+/* --- Dark Mode Colors --- */
+.dark {
+  --vp-c-brand-1: #D4FF3B;
+  --vp-c-brand-2: #b8e000;
+  --vp-c-brand-3: #90bd00;
+  --vp-c-brand-soft: rgba(212, 255, 59, 0.16);
+
+  --vp-c-bg: #0B0C10;
+  --vp-c-bg-alt: #12141a;
+  --vp-c-bg-elv: #1a1d24;
+  --vp-c-bg-soft: #1a1d24;
+
+  --vp-c-text-1: #F9FAFB;
+  --vp-c-text-2: #a0aec0;
+  --vp-c-text-3: #718096;
+
+  --vp-c-tip-1: #D4FF3B;
+  --vp-c-tip-2: rgba(212, 255, 59, 0.16);
+  --vp-c-tip-3: rgba(212, 255, 59, 0.28);
+
+  --vp-sidebar-bg-color: #12141a;
+}
+
+/* --- Hero Section --- */
+.VPHero .name {
+  background: linear-gradient(135deg, #D4FF3B 0%, #90bd00 50%, #6b8f00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark .VPHero .name {
+  background: linear-gradient(135deg, #D4FF3B 0%, #b8e000 50%, #90bd00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* --- Home Features --- */
+.VPFeature {
+  border-color: var(--vp-c-brand-soft) !important;
+  transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-1) !important;
+  box-shadow: 0 2px 12px var(--vp-c-brand-soft);
+}
+
+/* --- Severity/Status Badges --- */
+.badge-critical {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e53e3e;
+}
+
+.badge-high {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e17055;
+}
+
+.badge-medium {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #ffd93d;
+}
+
+.badge-low {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #a0d2db;
+}
+
+.badge-resolved {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #38a169;
+}
+
+.badge-open {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #e53e3e;
+}
+
+.badge-active {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #3182ce;
+}
+
+.badge-completed {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  background: #D4FF3B;
+}
+
+.badge-planned {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2d3436;
+  background: #cbd5e0;
+}
+
+.badge-deferred {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  background: #a0522d;
+}
+
+/* --- Badge Dark Mode --- */
+.dark .badge-critical { background: #fc5c5c; color: #1a1a1a; }
+.dark .badge-high { background: #e8856e; color: #1a1a1a; }
+.dark .badge-medium { background: #ffe066; color: #1a1a1a; }
+.dark .badge-low { background: #b3dfe6; color: #1a1a1a; }
+.dark .badge-resolved { background: #68d391; color: #1a1a1a; }
+.dark .badge-open { background: #fc5c5c; color: #1a1a1a; }
+.dark .badge-active { background: #63b3ed; color: #1a1a1a; }
+.dark .badge-completed { background: #D4FF3B; color: #1a1a1a; }
+.dark .badge-planned { background: #a0aec0; color: #1a1a1a; }
+.dark .badge-deferred { background: #cd853f; color: #1a1a1a; }
+
+/* --- Sprint Cards --- */
+.sprint-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+  background: var(--vp-c-bg-alt);
+}
+
+.sprint-card h3 {
+  margin-top: 0;
+  color: var(--vp-c-brand-1);
+}
+
+/* --- Stats Grid --- */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1rem;
+  border-radius: 8px;
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--vp-c-brand-1);
+  line-height: 1;
+}
+
+.stat-card .stat-label {
+  font-size: 0.75rem;
+  color: var(--vp-c-text-3);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Code blocks --- */
+.vp-code-group .tabs label {
+  font-family: var(--vp-font-family-mono);
+}
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-brand-soft);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-brand-1);
+}
+
+/* ================================================================
+   Vue Flow Diagrams — Design System
+   ================================================================ */
+
+/* --- Design Tokens --- */
+:root {
+  --flow-bg: #fafaf6;
+  --flow-grid-color: rgba(107, 143, 0, 0.07);
+  --flow-edge-color: #90bd00;
+  --flow-edge-label-bg: rgba(255, 255, 255, 0.92);
+  --flow-edge-label-color: #4a5568;
+  --flow-edge-label-border: rgba(107, 143, 0, 0.15);
+  --flow-handle-color: #6b8f00;
+  --flow-handle-border: #fff;
+  --flow-selection-ring: rgba(144, 189, 0, 0.5);
+  --flow-node-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --flow-node-shadow-hover: 0 4px 12px rgba(107, 143, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --flow-node-shadow-drag: 0 12px 32px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dark {
+  --flow-bg: #12141a;
+  --flow-grid-color: rgba(212, 255, 59, 0.04);
+  --flow-edge-color: #D4FF3B;
+  --flow-edge-label-bg: rgba(18, 20, 26, 0.95);
+  --flow-edge-label-color: #a0aec0;
+  --flow-edge-label-border: rgba(212, 255, 59, 0.2);
+  --flow-handle-color: #D4FF3B;
+  --flow-handle-border: #12141a;
+  --flow-selection-ring: rgba(212, 255, 59, 0.5);
+  --flow-node-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --flow-node-shadow-hover: 0 4px 12px rgba(212, 255, 59, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --flow-node-shadow-drag: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Diagram Container --- */
+.flow-diagram-wrapper {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  margin: 1.5rem 0;
+  overflow: hidden;
+  background: var(--flow-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  max-width: 100%;
+}
+
+.flow-diagram-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 300px;
+  color: var(--vp-c-text-3);
+  font-size: 0.875rem;
+  font-family: 'Inter', sans-serif;
+  background: var(--vp-c-bg-alt);
+  border-radius: 12px;
+  margin: 1.5rem 0;
+}
+
+/* --- Vue Flow Core Overrides --- */
+.flow-diagram-wrapper .vue-flow {
+  background: transparent;
+}
+
+/* Controls */
+.flow-diagram-wrapper .vue-flow__controls {
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+}
+
+.flow-diagram-wrapper .vue-flow__controls .vue-flow__controls-button {
+  background: var(--vp-c-bg);
+  border-bottom: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  width: 28px;
+  height: 28px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.flow-diagram-wrapper .vue-flow__controls .vue-flow__controls-button:hover {
+  background: var(--vp-c-bg-alt);
+  color: var(--vp-c-brand-1);
+}
+
+.dark .flow-diagram-wrapper .vue-flow__controls .vue-flow__controls-button {
+  background: #1a1d24;
+  color: #a0aec0;
+  border-color: #2a2d34;
+}
+
+.dark .flow-diagram-wrapper .vue-flow__controls .vue-flow__controls-button:hover {
+  background: #2a2d34;
+  color: #D4FF3B;
+}
+
+/* Minimap */
+.flow-diagram-wrapper .vue-flow__minimap {
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.dark .flow-diagram-wrapper .vue-flow__minimap {
+  background: #1a1d24;
+  border-color: #2a2d34;
+}
+
+/* --- Connection Handles --- */
+.flow-diagram-wrapper .vue-flow__handle {
+  width: 7px;
+  height: 7px;
+  background: var(--flow-handle-color);
+  border: 2px solid var(--flow-handle-border);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.15s ease;
+}
+
+.flow-diagram-wrapper .vue-flow__node:hover .vue-flow__handle {
+  opacity: 0.7;
+}
+
+.flow-diagram-wrapper .vue-flow__handle:hover {
+  opacity: 1 !important;
+  transform: scale(1.4);
+  background: var(--flow-edge-color);
+}
+
+/* --- Node Interactions --- */
+.flow-diagram-wrapper .vue-flow__node {
+  cursor: grab;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.flow-diagram-wrapper .vue-flow__node.dragging,
+.flow-diagram-wrapper .vue-flow__node:active {
+  cursor: grabbing;
+  z-index: 100 !important;
+}
+
+.flow-diagram-wrapper .vue-flow__node.dragging > * {
+  box-shadow: var(--flow-node-shadow-drag) !important;
+  transform: scale(1.02);
+}
+
+.flow-diagram-wrapper .vue-flow__node.selected > * {
+  outline: 2px solid var(--flow-selection-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+/* --- Edge Styling --- */
+.flow-diagram-wrapper .vue-flow__edge-path {
+  stroke: var(--flow-edge-color);
+  stroke-width: 1.5;
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+}
+
+.flow-diagram-wrapper .vue-flow__edge:hover .vue-flow__edge-path {
+  stroke: var(--vp-c-brand-1);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px rgba(144, 189, 0, 0.3));
+}
+
+/* Edge Labels */
+.flow-diagram-wrapper .vue-flow__edge-textbg {
+  rx: 6;
+  ry: 6;
+  fill: var(--flow-edge-label-bg) !important;
+  stroke: var(--flow-edge-label-border);
+  stroke-width: 1;
+}
+
+.flow-diagram-wrapper .vue-flow__edge-text {
+  pointer-events: none;
+}
+
+/* Animated edges */
+.vue-flow__edge.animated .vue-flow__edge-path {
+  stroke-dasharray: 6 3;
+  animation: flow-dash 0.6s linear infinite;
+}
+
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -9;
+  }
+}
+
+/* --- Dark Mode Node Overrides --- */
+
+/* StateNode */
+.dark .flow-node-state {
+  background: linear-gradient(145deg, #1e2400, #1a2000) !important;
+  color: #e8f0d0 !important;
+  border-color: #b8e000 !important;
+  box-shadow: 0 2px 8px rgba(212, 255, 59, 0.1), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .flow-node-state:hover {
+  box-shadow: 0 6px 18px rgba(212, 255, 59, 0.2), 0 0 8px rgba(212, 255, 59, 0.1) !important;
+}
+
+.dark .flow-node-state.state-start {
+  background: linear-gradient(145deg, #1a2e00, #142200) !important;
+  border-color: #90bd00 !important;
+  box-shadow: 0 2px 8px rgba(144, 189, 0, 0.15), 0 0 0 3px rgba(144, 189, 0, 0.06) !important;
+}
+
+.dark .flow-node-state.state-end {
+  background: linear-gradient(145deg, #3a1e1e, #2e1616) !important;
+  border-color: #e17055 !important;
+  box-shadow: 0 2px 8px rgba(225, 112, 85, 0.15), 0 0 0 3px rgba(225, 112, 85, 0.06) !important;
+}
+
+.dark .flow-node-state .state-label {
+  color: #e8f0d0 !important;
+}
+
+.dark .flow-node-state .state-sublabel {
+  color: #a0b090 !important;
+}
+
+/* ProcessNode */
+.dark .flow-node-process {
+  background: #1a1d24 !important;
+  color: #e8f0d0 !important;
+  border-color: #3a5a00 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+.dark .flow-node-process:hover {
+  border-color: #90bd00 !important;
+  box-shadow: 0 6px 18px rgba(144, 189, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .flow-node-process .process-sublabel {
+  color: #a0b090 !important;
+}
+
+.dark .flow-node-process .process-step {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* LayerNode */
+.dark .flow-node-layer {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .flow-node-layer:hover {
+  box-shadow: 0 8px 24px rgba(107, 143, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ModuleNode */
+.dark .flow-node-module {
+  border-color: #3a5a00 !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+.dark .flow-node-module:hover {
+  border-color: #90bd00 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 12px rgba(212, 255, 59, 0.15) !important;
+}
+
+/* GroupNode */
+.dark .flow-node-group {
+  filter: brightness(0.85) saturate(0.9);
+}
+
+.dark .flow-node-group .group-title {
+  color: #D4FF3B !important;
+}

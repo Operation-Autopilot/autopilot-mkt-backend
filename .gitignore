@@ -104,3 +104,16 @@ logs/
 *.key
 credentials.json
 service-account.json
+
+# Node / VitePress
+node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# Auto-generated docs data (regenerated via npm run docs:generate)
+docs/.vitepress/data/project-stats.json
+docs/.vitepress/data/product-hierarchy.json
+docs/status/issues.md
+docs/status/sprints.md
+docs/status/sessions.md
+docs/status/research.md
