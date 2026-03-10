@@ -1,7 +1,6 @@
 """Conversation business logic service."""
 
-import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -10,10 +9,11 @@ from src.models.conversation import ConversationPhase
 from src.models.message import MessageRole
 from src.schemas.conversation import ConversationCreate, ConversationResponse
 from src.schemas.message import MessageResponse
+from src.services.base_service import BaseService
 from src.services.company_service import CompanyService
 
 
-class ConversationService:
+class ConversationService(BaseService):
     """Service for managing conversations and messages."""
 
     DEFAULT_TITLE = "New Conversation"
@@ -23,10 +23,6 @@ class ConversationService:
         """Initialize conversation service with Supabase client."""
         self.client = get_supabase_client()
         self.company_service = CompanyService()
-
-    async def _execute_sync(self, query):
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     async def create_conversation(
         self,
@@ -324,7 +320,7 @@ class ConversationService:
 
         # Update conversation updated_at
         update_query = self.client.table("conversations").update(
-            {"updated_at": datetime.utcnow().isoformat()}
+            {"updated_at": datetime.now(timezone.utc).isoformat()}
         ).eq("id", str(conversation_id))
         await self._execute_sync(update_query)
 

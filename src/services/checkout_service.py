@@ -13,6 +13,7 @@ import stripe
 from src.core.config import get_settings
 from src.core.stripe import get_stripe, get_stripe_api_key
 from src.core.supabase import get_supabase_client
+from src.services.base_service import BaseService
 from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ ALLOWED_REDIRECT_DOMAINS = {
 }
 
 
-class CheckoutService:
+class CheckoutService(BaseService):
     """Service for Stripe checkout and order management."""
 
     def __init__(self) -> None:
@@ -33,10 +34,6 @@ class CheckoutService:
         self.stripe = get_stripe()
         self.settings = get_settings()
         self.robot_service = RobotCatalogService()
-
-    async def _execute_sync(self, query):
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     def _validate_redirect_url(self, url: str) -> str:
         """Validate that a redirect URL uses an allowed domain to prevent open redirects.
@@ -61,7 +58,7 @@ class CheckoutService:
         Cancel orders that have been in 'pending' state without a Stripe session ID
         for longer than max_age_minutes. Returns number of orders cleaned up.
         """
-        cutoff = (datetime.utcnow() - timedelta(minutes=max_age_minutes)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
         query = (
             self.client.table("orders")
             .update({"status": "cancelled", "metadata": {"cancellation_reason": "orphaned_pending"}})
@@ -200,17 +197,24 @@ class CheckoutService:
                 if existing_customers.data:
                     checkout_params["customer"] = existing_customers.data[0].id
                 else:
-                    customer = self.stripe.Customer.create(
-                        email=customer_email, api_key=stripe_api_key
+                    customer = await asyncio.to_thread(
+                        self.stripe.Customer.create,
+                        email=customer_email,
+                        api_key=stripe_api_key,
                     )
                     checkout_params["customer"] = customer.id
             else:
                 # Create anonymous customer for test mode compatibility
-                customer = self.stripe.Customer.create(api_key=stripe_api_key)
+                customer = await asyncio.to_thread(
+                    self.stripe.Customer.create,
+                    api_key=stripe_api_key,
+                )
                 checkout_params["customer"] = customer.id
 
-            stripe_session = self.stripe.checkout.Session.create(
-                **checkout_params, api_key=stripe_api_key
+            stripe_session = await asyncio.to_thread(
+                self.stripe.checkout.Session.create,
+                **checkout_params,
+                api_key=stripe_api_key,
             )
 
             # Update order with Stripe session ID and test mode flag
@@ -419,12 +423,11 @@ class CheckoutService:
         Returns:
             dict | None: The order data or None if not found.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("orders")
             .select("*")
             .eq("id", str(order_id))
             .maybe_single()
-            .execute()
         )
 
         return response.data if response and response.data else None
@@ -438,12 +441,11 @@ class CheckoutService:
         Returns:
             list[dict]: List of order data.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("orders")
             .select("*")
             .eq("profile_id", str(profile_id))
             .order("created_at", desc=True)
-            .execute()
         )
 
         return response.data or []
@@ -457,12 +459,11 @@ class CheckoutService:
         Returns:
             list[dict]: List of order data.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("orders")
             .select("*")
             .eq("session_id", str(session_id))
             .order("created_at", desc=True)
-            .execute()
         )
 
         return response.data or []
@@ -481,11 +482,10 @@ class CheckoutService:
         Returns:
             int: Number of orders transferred.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("orders")
             .update({"profile_id": str(profile_id)})
             .eq("session_id", str(session_id))
-            .execute()
         )
 
         return len(response.data) if response.data else 0

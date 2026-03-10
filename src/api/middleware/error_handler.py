@@ -174,8 +174,9 @@ async def error_handler_middleware(request: Request, call_next: Callable[[Reques
             details=e.details,
             request_id=request_id,
         )
+        settings = get_settings()
         response.headers["Retry-After"] = str(e.retry_after)
-        response.headers["X-RateLimit-Limit"] = "15"
+        response.headers["X-RateLimit-Limit"] = str(settings.rate_limit_anonymous_requests)
         response.headers["X-RateLimit-Remaining"] = "0"
         response.headers["X-RateLimit-Reset"] = str(int(time.time()) + e.retry_after)
         return response

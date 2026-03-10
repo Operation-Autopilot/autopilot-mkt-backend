@@ -16,6 +16,7 @@ from src.core.config import get_settings
 from src.core.openai import get_openai_client
 from src.core.supabase import get_supabase_client
 from src.core.token_budget import TokenBudgetError, get_token_budget
+from src.services.base_service import BaseService
 from src.schemas.floor_plan import (
     CleaningMode,
     CostEstimateSchema,
@@ -111,7 +112,7 @@ class FloorPlanAnalysisError(FloorPlanServiceError):
     pass
 
 
-class FloorPlanService:
+class FloorPlanService(BaseService):
     """Service for floor plan upload, analysis, and cost calculation."""
 
     def __init__(
@@ -191,9 +192,11 @@ class FloorPlanService:
             )
 
             # Update record with storage path
-            self.client.table("floor_plan_analyses").update(
-                {"storage_path": storage_path}
-            ).eq("id", str(analysis_id)).execute()
+            await self._execute_sync(
+                self.client.table("floor_plan_analyses")
+                .update({"storage_path": storage_path})
+                .eq("id", str(analysis_id))
+            )
 
             # Check token budget
             budget_key = f"profile:{profile_id}" if profile_id else f"session:{session_id}"
@@ -230,17 +233,21 @@ class FloorPlanService:
             analysis_duration_ms = int((time.perf_counter() - start_time) * 1000)
 
             # Update record with results
-            self.client.table("floor_plan_analyses").update(
-                {
-                    "status": FloorPlanStatus.COMPLETED.value,
-                    "extracted_features": extracted_features.model_dump(),
-                    "extraction_confidence": extraction_confidence,
-                    "cost_estimate": cost_estimate.model_dump(),
-                    "gpt_model_used": "gpt-4o",
-                    "tokens_used": tokens_used,
-                    "analysis_duration_ms": analysis_duration_ms,
-                }
-            ).eq("id", str(analysis_id)).execute()
+            await self._execute_sync(
+                self.client.table("floor_plan_analyses")
+                .update(
+                    {
+                        "status": FloorPlanStatus.COMPLETED.value,
+                        "extracted_features": extracted_features.model_dump(),
+                        "extraction_confidence": extraction_confidence,
+                        "cost_estimate": cost_estimate.model_dump(),
+                        "gpt_model_used": "gpt-4o",
+                        "tokens_used": tokens_used,
+                        "analysis_duration_ms": analysis_duration_ms,
+                    }
+                )
+                .eq("id", str(analysis_id))
+            )
 
             # Update discovery profile if authenticated
             discovery_updated = False
@@ -355,7 +362,9 @@ class FloorPlanService:
         if session_id:
             data["session_id"] = str(session_id)
 
-        response = self.client.table("floor_plan_analyses").insert(data).execute()
+        response = await self._execute_sync(
+            self.client.table("floor_plan_analyses").insert(data)
+        )
         return UUID(response.data[0]["id"])
 
     async def _upload_to_storage(
@@ -443,7 +452,7 @@ class FloorPlanService:
                 },
             ],
             response_format=FLOOR_PLAN_EXTRACTION_SCHEMA,
-            max_tokens=4000,
+            max_completion_tokens=4000,
         )
 
         # Parse response
@@ -908,11 +917,13 @@ class FloorPlanService:
         if error_message:
             data["error_message"] = error_message
 
-        self.client.table("floor_plan_analyses").update(data).eq(
-            "id", str(analysis_id)
-        ).execute()
+        await self._execute_sync(
+            self.client.table("floor_plan_analyses")
+            .update(data)
+            .eq("id", str(analysis_id))
+        )
 
-    def _get_record(self, analysis_id: UUID) -> dict[str, Any]:
+    async def _get_record(self, analysis_id: UUID) -> dict[str, Any]:
         """Get analysis record by ID.
 
         Args:
@@ -921,12 +932,11 @@ class FloorPlanService:
         Returns:
             Record data.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("floor_plan_analyses")
             .select("*")
             .eq("id", str(analysis_id))
             .single()
-            .execute()
         )
         return response.data
 
@@ -954,7 +964,7 @@ class FloorPlanService:
         elif session_id:
             query = query.eq("session_id", str(session_id))
 
-        response = query.maybe_single().execute()
+        response = await self._execute_sync(query.maybe_single())
 
         if not response.data:
             return None
@@ -1005,7 +1015,7 @@ class FloorPlanService:
             return []
 
         query = query.order("created_at", desc=True)
-        response = query.execute()
+        response = await self._execute_sync(query)
 
         analyses = []
         for data in response.data:
@@ -1058,7 +1068,7 @@ class FloorPlanService:
         elif session_id:
             query = query.eq("session_id", str(session_id))
 
-        response = query.maybe_single().execute()
+        response = await self._execute_sync(query.maybe_single())
 
         if not response.data:
             return False
@@ -1073,9 +1083,11 @@ class FloorPlanService:
                 logger.warning("Failed to delete from storage: %s", e)
 
         # Delete record
-        self.client.table("floor_plan_analyses").delete().eq(
-            "id", str(analysis_id)
-        ).execute()
+        await self._execute_sync(
+            self.client.table("floor_plan_analyses")
+            .delete()
+            .eq("id", str(analysis_id))
+        )
 
         return True
 

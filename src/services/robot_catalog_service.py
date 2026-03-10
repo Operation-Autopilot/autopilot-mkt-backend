@@ -1,6 +1,5 @@
 """Robot catalog business logic service."""
 
-import asyncio
 import logging
 import re
 from collections import Counter
@@ -14,6 +13,7 @@ from src.schemas.robot import (
     RobotFilters,
     RobotSortField,
 )
+from src.services.base_service import BaseService
 from src.services.rag_service import RAGService, get_rag_service
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def _sanitize_filter_input(value: str) -> str:
     return re.sub(r"[^\w\s\-.,()]+", "", value)
 
 
-class RobotCatalogService:
+class RobotCatalogService(BaseService):
     """Service for managing robot product catalog."""
 
     def __init__(self, rag_service: RAGService | None = None) -> None:
@@ -61,10 +61,6 @@ class RobotCatalogService:
         """
         self.client = get_supabase_client()
         self._rag_service = rag_service
-
-    async def _execute_sync(self, query):
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     @property
     def rag_service(self) -> RAGService:

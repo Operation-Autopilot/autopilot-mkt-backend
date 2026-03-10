@@ -263,7 +263,8 @@ class AuthService:
 
         except Exception as e:
             error_msg = str(e)
-            logger.error("Login failed: %s", error_msg)
+            # Log generic error code only — avoid including email address from Supabase messages
+            logger.error("Login failed with error type: %s", type(e).__name__)
 
             if "invalid" in error_msg.lower() and "credentials" in error_msg.lower():
                 raise ValidationError("Invalid email or password") from e

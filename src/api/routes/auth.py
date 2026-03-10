@@ -1,6 +1,7 @@
 """Authentication API routes."""
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
+from typing import Annotated
 
 from src.api.deps import CurrentUser
 from src.api.middleware.error_handler import ValidationError
@@ -216,21 +217,25 @@ async def login(data: LoginRequest) -> LoginResponse:
     summary="Logout user",
     description="Logout the current user and invalidate their session.",
 )
-async def logout(user: CurrentUser) -> dict[str, str]:
+async def logout(
+    user: CurrentUser,
+    authorization: Annotated[str, Header(description="Bearer token")] = "",
+) -> dict[str, str]:
     """Logout the authenticated user.
 
-    Invalidates the user's session. Note: This requires the access token
-    to be passed in the Authorization header.
+    Invalidates the user's Supabase session server-side by calling sign_out().
 
     Args:
         user: The authenticated user context.
+        authorization: The Authorization header value (Bearer token).
 
     Returns:
         dict: Logout confirmation message.
     """
-    # Note: For proper logout, we'd need the access token
-    # Since we only have the decoded user context, we return success
-    # The frontend should clear the token
+    service = AuthService()
+    if authorization and authorization.lower().startswith("bearer "):
+        access_token = authorization.split(" ", 1)[1]
+        await service.logout(access_token)
     return {"message": "Logged out successfully"}
 
 

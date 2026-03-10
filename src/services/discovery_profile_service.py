@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from hashlib import sha256
@@ -11,6 +10,7 @@ from uuid import UUID
 
 from src.core.supabase import get_supabase_client
 from src.schemas.discovery import DiscoveryProfileUpdate
+from src.services.base_service import BaseService
 
 if TYPE_CHECKING:
     from src.schemas.floor_plan import CostEstimateSchema, ExtractedFeaturesSchema
@@ -40,16 +40,12 @@ def compute_answers_hash(answers: dict[str, Any]) -> str:
     return sha256(json_str.encode()).hexdigest()[:16]
 
 
-class DiscoveryProfileService:
+class DiscoveryProfileService(BaseService):
     """Service for managing authenticated user discovery profiles."""
 
     def __init__(self) -> None:
         """Initialize discovery profile service with Supabase client."""
         self.client = get_supabase_client()
-
-    async def _execute_sync(self, query):
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     async def get_or_create(self, profile_id: UUID) -> dict[str, Any]:
         """Get existing discovery profile or create a new one.
