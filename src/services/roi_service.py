@@ -92,7 +92,28 @@ class ROIService:
             raw_spend = str(monthly_spend_answer.get("value", ""))
         else:
             raw_spend = ""
-        manual_monthly_spend = SPEND_MAP.get(raw_spend, 3500.0)  # Default fallback
+        manual_monthly_spend = SPEND_MAP.get(raw_spend)
+        if manual_monthly_spend is None and raw_spend:
+            # User typed a custom value — try to parse it as a number.
+            # Handle: "3000", "$3,000", "$3.5k", "3500/month", "around $4,000", etc.
+            try:
+                cleaned = raw_spend.lower().replace(",", "").replace("$", "").strip()
+                # Strip trailing context like "/month", "per month", "monthly"
+                for suffix in ("/month", "per month", "monthly", "/mo"):
+                    cleaned = cleaned.replace(suffix, "").strip()
+                # Handle "k" suffix for thousands
+                if cleaned.endswith("k"):
+                    manual_monthly_spend = float(cleaned[:-1]) * 1000
+                else:
+                    # Extract the first numeric token (handles "around 4000" etc.)
+                    import re
+                    match = re.search(r"\d+(?:\.\d+)?", cleaned)
+                    if match:
+                        manual_monthly_spend = float(match.group())
+            except (ValueError, AttributeError):
+                pass
+        if manual_monthly_spend is None:
+            manual_monthly_spend = 3500.0  # Default fallback
 
         # Get duration (hours per session) safely
         duration_answer = answers.get("duration")
