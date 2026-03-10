@@ -56,7 +56,9 @@ async def create_session(response: Response) -> SessionResponse:
 
     # Return token in body so frontend can use X-Session-Token header
     # when third-party cookies are blocked by the browser
-    return SessionResponse(**session_data, session_token=token, ready_for_roi=False)
+    # Exclude session_token (hash) from DB row — we pass the raw token explicitly
+    session_fields = {k: v for k, v in session_data.items() if k != "session_token"}
+    return SessionResponse(**session_fields, session_token=token, ready_for_roi=False)
 
 
 @router.get(
