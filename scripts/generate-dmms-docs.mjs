@@ -3,8 +3,11 @@
 /**
  * generate-dmms-docs.mjs
  *
- * Reads the DMMS database (dmms/dmms.db) and generates status pages
- * under docs/status/ plus JSON data files for Vue components.
+ * 1. Syncs feature statuses in the DMMS database by detecting file presence.
+ * 2. Generates status pages under docs/status/ from the DMMS database.
+ * 3. Generates docs/status/migrations.md from supabase/migrations/*.sql.
+ * 4. Generates docs/status/services.md from service file docstrings.
+ * 5. Writes JSON data files (docs/.vitepress/data/) for Vue components.
  *
  * Usage:
  *   node scripts/generate-dmms-docs.mjs
@@ -30,6 +33,8 @@ const STATS_DIR = path.resolve(ROOT, 'docs', '.vitepress', 'data');
 const BACKEND_SRC = path.resolve(ROOT, 'src');
 // Frontend source root (sibling repo)
 const FRONTEND_SRC = path.resolve(ROOT, '..', 'Autopilot-Marketplace-Discovery-to-Greenlight-', 'src');
+// Supabase migrations
+const MIGRATIONS_DIR = path.resolve(ROOT, 'supabase', 'migrations');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,6 +70,177 @@ function writePage(filename, content) {
 }
 
 // ---------------------------------------------------------------------------
+// Feature / File-Presence Sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Features that can be auto-detected from file presence.
+ * - files: at least one must exist to mark as 'completed'
+ * - project: 'Backend' or 'Frontend' (matched against projects table name)
+ */
+const FEATURE_PRESENCE_MAP = [
+  // Backend — services
+  {
+    name: 'Gynger B2B Financing',
+    project: 'Backend',
+    files: ['src/services/gynger_service.py'],
+    priority: 1,
+    description: 'Gynger B2B financing application flow and webhook processing',
+  },
+  {
+    name: 'Floor Plan Analysis',
+    project: 'Backend',
+    files: ['src/services/floor_plan_service.py', 'src/api/routes/floor_plans.py'],
+    priority: 1,
+    description: 'Floor plan upload and GPT-4o Vision analysis for sqft extraction',
+  },
+  {
+    name: 'ROI Engine',
+    project: 'Backend',
+    files: ['src/services/roi_service.py', 'src/api/routes/roi.py'],
+    priority: 1,
+    description: 'ROI v2.1.0 formula-based calculation and greenlight recommendations',
+  },
+  {
+    name: 'Recommendation Cache',
+    project: 'Backend',
+    files: ['src/services/recommendation_cache.py'],
+    priority: 2,
+    description: 'In-memory recommendation cache with TTL-based invalidation',
+  },
+  {
+    name: 'Admin Layer',
+    project: 'Backend',
+    files: ['src/api/routes/admin.py'],
+    priority: 2,
+    description: 'Admin-only endpoints for HubSpot, Fireflies, and share link management',
+  },
+  {
+    name: 'HubSpot Integration',
+    project: 'Backend',
+    files: ['src/services/hubspot_service.py'],
+    priority: 2,
+    description: 'HubSpot OAuth, contact/company lookup, and meeting context retrieval',
+  },
+  {
+    name: 'Fireflies Integration',
+    project: 'Backend',
+    files: ['src/services/fireflies_service.py'],
+    priority: 2,
+    description: 'Fireflies GraphQL API for meeting transcripts and field extraction',
+  },
+  {
+    name: 'Share Links',
+    project: 'Backend',
+    files: ['src/api/routes/shares.py'],
+    priority: 2,
+    description: 'Public share link endpoints for ROI snapshots',
+  },
+  // Frontend
+  {
+    name: 'Admin Panel',
+    project: 'Frontend',
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/components/admin/AdminPanel.tsx'],
+    priority: 2,
+    description: 'Tabbed admin UI: Prep-call (HubSpot/Fireflies) and Post-call tabs',
+  },
+  {
+    name: 'Presentation Mode',
+    project: 'Frontend',
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/components/admin/PresentationModeToggle.tsx'],
+    priority: 3,
+    description: 'Cmd+Shift+\\ shortcut hides chat and admin band for screen-share demos',
+  },
+  {
+    name: 'Shared ROI Page',
+    project: 'Frontend',
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/pages/SharedROIPage.tsx'],
+    priority: 2,
+    description: 'Public share page for ROI snapshots at /share/{token}',
+  },
+  {
+    name: 'Floor Plan Upload UI',
+    project: 'Frontend',
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/components/FloorPlanUpload.tsx'],
+    priority: 2,
+    description: 'Drag-and-drop floor plan upload with auto-fill sqft from vision analysis',
+  },
+  {
+    name: 'E2E Playwright Suite',
+    project: 'Frontend',
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/e2e/fixtures/sku_data.ts'],
+    priority: 2,
+    description: 'Playwright E2E suite: journeys, nonlinear, payment, procurement, multiuser',
+  },
+];
+
+function syncFeatureStatuses(db) {
+  const existing = db.prepare('SELECT id, name, status, project_id FROM features').all();
+  const byName = {};
+  for (const f of existing) byName[f.name.toLowerCase()] = f;
+
+  const projects = db.prepare('SELECT id, name FROM projects').all();
+  const projectByKeyword = {};
+  for (const p of projects) {
+    // "Frontend (React SPA)" → keyword 'frontend'
+    // "Backend (FastAPI API)" → keyword 'backend'
+    const keyword = p.name.split(' ')[0].toLowerCase();
+    projectByKeyword[keyword] = p.id;
+  }
+
+  let updated = 0;
+  let inserted = 0;
+
+  for (const spec of FEATURE_PRESENCE_MAP) {
+    const detected = spec.files.some(f => fs.existsSync(path.resolve(ROOT, f)));
+    const detectedStatus = detected ? 'completed' : 'planned';
+
+    const existing = byName[spec.name.toLowerCase()];
+    if (existing) {
+      if (detectedStatus === 'completed' && existing.status !== 'completed') {
+        db.prepare("UPDATE features SET status = 'completed' WHERE id = ?").run(existing.id);
+        updated++;
+      }
+    } else {
+      const projectKeyword = (spec.project || 'backend').toLowerCase();
+      const project_id = projectByKeyword[projectKeyword] || 2;
+      db.prepare(
+        'INSERT INTO features (project_id, name, status, priority, description) VALUES (?, ?, ?, ?, ?)'
+      ).run(project_id, spec.name, detectedStatus, spec.priority, spec.description);
+      inserted++;
+      // Add to local map so duplicates in FEATURE_PRESENCE_MAP don't double-insert
+      byName[spec.name.toLowerCase()] = { name: spec.name, status: detectedStatus, project_id };
+    }
+  }
+
+  if (updated + inserted > 0) {
+    console.log(`  Feature sync: ${updated} updated, ${inserted} inserted`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Service Docstring Scanner
+// ---------------------------------------------------------------------------
+
+function scanServiceDocstrings() {
+  const servicesDir = path.join(BACKEND_SRC, 'services');
+  const descriptions = {};
+  if (!fs.existsSync(servicesDir)) return descriptions;
+
+  for (const f of fs.readdirSync(servicesDir)) {
+    if (!f.endsWith('.py') || f === '__init__.py') continue;
+    const content = fs.readFileSync(path.join(servicesDir, f), 'utf-8');
+    // Match module-level triple-quoted docstring (possibly after # comments)
+    const m = content.match(/^(?:#[^\n]*\n)*\s*"""([\s\S]*?)"""/);
+    if (m) {
+      const firstLine = m[1].trim().split('\n')[0].trim();
+      if (firstLine) descriptions[f] = firstLine;
+    }
+  }
+  return descriptions;
+}
+
+// ---------------------------------------------------------------------------
 // Stats Computation
 // ---------------------------------------------------------------------------
 
@@ -95,44 +271,23 @@ function countTestCases(content) {
     if (trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue;
     // Python test functions
     if (/\bdef test_/.test(trimmed)) count++;
-    // JS/TS test functions
+    // JS/TS test functions (vitest + playwright)
     if (/\b(it|test)\s*\(/.test(trimmed)) count++;
   }
   return count;
 }
-
-const SERVICE_DESCRIPTIONS = {
-  'auth_service.py': 'Authentication logic — signup, login, token refresh, password reset',
-  'profile_service.py': 'User profile CRUD operations',
-  'company_service.py': 'Company creation, member management, role assignments',
-  'conversation_service.py': 'Conversation and message CRUD, context reconstruction',
-  'agent_service.py': 'OpenAI GPT-4o agent orchestration for chat responses',
-  'rag_service.py': 'Pinecone vector search for product recommendations',
-  'profile_extraction_service.py': 'AI-powered discovery profile extraction from conversations',
-  'discovery_profile_service.py': 'Discovery data storage and retrieval',
-  'session_service.py': 'Anonymous session management and linking',
-  'checkout_service.py': 'Stripe checkout session creation and order management',
-  'robot_catalog_service.py': 'Robot product catalog management',
-  'recommendation_service.py': 'ROI-based robot recommendations',
-  'recommendation_cache.py': 'Caching layer for recommendation results',
-  'floor_plan_service.py': 'Floor plan upload and processing',
-  'floor_plan_prompts.py': 'AI prompts for floor plan analysis',
-  'recommendation_prompts.py': 'AI prompts for generating recommendations',
-  'sales_knowledge_service.py': 'Sales knowledge base for agent context',
-  'email_service.py': 'Email delivery for invitations and notifications',
-  'invitation_service.py': 'Company invitation management',
-};
 
 function computeServiceInventory() {
   const servicesDir = path.join(BACKEND_SRC, 'services');
   const inventory = [];
   if (!fs.existsSync(servicesDir)) return inventory;
 
+  const docstrings = scanServiceDocstrings();
   const files = fs.readdirSync(servicesDir).filter(f => f.endsWith('.py') && f !== '__init__.py');
   for (const f of files) {
     const content = fs.readFileSync(path.join(servicesDir, f), 'utf-8');
     const lines = content.split('\n').length;
-    const description = SERVICE_DESCRIPTIONS[f] || '(undocumented)';
+    const description = docstrings[f] || '(undocumented)';
     inventory.push({ file: f, lines, description });
   }
   inventory.sort((a, b) => b.lines - a.lines);
@@ -179,31 +334,53 @@ function computeFrontendStats() {
 }
 
 function computeTestStats() {
-  const testsDir = path.resolve(ROOT, 'tests');
+  const pyTestsDir = path.resolve(ROOT, 'tests');
+  const e2eDir = path.resolve(ROOT, '..', 'Autopilot-Marketplace-Discovery-to-Greenlight-', 'e2e');
   const pyExts = ['.py'];
-  const total = countFilesAndLines(testsDir, pyExts);
+  const jsExts = ['.ts', '.js'];
+
+  const pyTotal = countFilesAndLines(pyTestsDir, pyExts);
+  const e2eTotal = countFilesAndLines(e2eDir, jsExts);
 
   let testCaseCount = 0;
-  if (fs.existsSync(testsDir)) {
+
+  if (fs.existsSync(pyTestsDir)) {
     const walk = (dir) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(full);
-        else if (entry.name.endsWith('.py')) {
-          testCaseCount += countTestCases(fs.readFileSync(full, 'utf-8'));
+        else if (entry.name.endsWith('.py')) testCaseCount += countTestCases(fs.readFileSync(full, 'utf-8'));
+      }
+    };
+    walk(pyTestsDir);
+  }
+
+  let e2eTestCaseCount = 0;
+  if (fs.existsSync(e2eDir)) {
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) {
+          e2eTestCaseCount += countTestCases(fs.readFileSync(full, 'utf-8'));
         }
       }
     };
-    walk(testsDir);
+    walk(e2eDir);
   }
 
   return {
-    totalTestFiles: total.files,
-    totalTestLines: total.lines,
+    totalTestFiles: pyTotal.files,
+    totalTestLines: pyTotal.lines,
     testCaseCount,
+    e2eTestFiles: e2eTotal.files,
+    e2eTestCaseCount,
   };
 }
+
+// ---------------------------------------------------------------------------
+// JSON Data Writers
+// ---------------------------------------------------------------------------
 
 function writeHierarchyJson(db) {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('products','projects')").all();
@@ -453,6 +630,90 @@ ${body}`;
   writePage('research.md', md);
 }
 
+function generateMigrationsPage(ts) {
+  if (!fs.existsSync(MIGRATIONS_DIR)) {
+    console.log('  Skipping migrations page (no supabase/migrations directory)');
+    return;
+  }
+
+  const files = fs.readdirSync(MIGRATIONS_DIR)
+    .filter(f => f.endsWith('.sql'))
+    .sort();
+
+  const migrations = files.map(f => {
+    const content = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf-8');
+    const basename = path.basename(f, '.sql');
+    const numMatch = basename.match(/^(\d+)_(.+)$/);
+    const num = numMatch ? numMatch[1] : '?';
+    // First non-empty -- comment line as description
+    const commentMatch = content.match(/^--\s*(.+)/m);
+    const description = commentMatch
+      ? commentMatch[1].replace(/^Migration \d+:\s*/i, '').trim()
+      : basename.replace(/_/g, ' ');
+    return { num, basename, filename: f, description };
+  });
+
+  const last = migrations.length > 0 ? migrations[migrations.length - 1] : null;
+
+  let table = '| # | Migration | Description |\n';
+  table += '|---|-----------|-------------|\n';
+  for (const m of migrations) {
+    table += `| ${m.num} | \`${m.basename}\` | ${escapeCell(m.description)} |\n`;
+  }
+
+  const md = `---
+title: Database Migrations
+---
+
+<!-- Auto-generated by scripts/generate-dmms-docs.mjs on ${ts} -->
+<!-- Do not edit manually — run \`npm run docs:generate\` to update. -->
+
+# Database Migrations
+
+> **Last applied:** ${last ? `\`${last.basename}\`` : '_none_'} &nbsp;·&nbsp; **Total:** ${migrations.length}
+
+${table}
+
+## Applying Migrations
+
+\`\`\`bash
+# Apply all pending migrations
+supabase db push
+
+# Create a new migration
+supabase migration new <name>
+\`\`\`
+
+See [Database schema](../backend/database.md) for column-level documentation.
+`;
+
+  writePage('migrations.md', md);
+}
+
+function generateServicesPage(inventory, ts) {
+  let table = '| Service File | Lines | Description |\n';
+  table += '|--------------|-------|-------------|\n';
+  for (const s of inventory) {
+    table += `| \`${s.file}\` | ${s.lines} | ${escapeCell(s.description)} |\n`;
+  }
+
+  const md = `---
+title: Service Inventory
+---
+
+<!-- Auto-generated by scripts/generate-dmms-docs.mjs on ${ts} -->
+<!-- Do not edit manually — run \`npm run docs:generate\` to update. -->
+
+# Service Inventory
+
+${table}
+
+> Descriptions extracted from module-level docstrings. Sorted by file size descending.
+`;
+
+  writePage('services.md', md);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -464,16 +725,29 @@ function main() {
     process.exit(1);
   }
 
-  const db = new Database(DB_PATH, { readonly: true });
+  // Open writable — needed to sync feature statuses
+  const db = new Database(DB_PATH);
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const ts = timestamp();
   console.log(`Generating DMMS docs (${ts})...`);
 
+  // 1. Sync feature statuses from file presence
+  console.log('  Syncing feature statuses...');
+  syncFeatureStatuses(db);
+
+  // 2. Generate standard status pages from DMMS
   generateIssues(db, ts);
   generateSprints(db, ts);
   generateSessions(db, ts);
   generateResearch(db, ts);
+
+  // 3. Generate source-derived pages
+  generateMigrationsPage(ts);
+  const inventory = computeServiceInventory();
+  generateServicesPage(inventory, ts);
+
+  // 4. Write JSON data for Vue components
   writeStatsJson(db);
   writeHierarchyJson(db);
 

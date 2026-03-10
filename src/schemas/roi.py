@@ -195,6 +195,8 @@ class RobotRecommendation(BaseModel):
     )
 
     # Full robot data for display
+    purchase_price: float | None = Field(default=None, description="One-time purchase price")
+    best_for: str | None = Field(default=None, description="Best use case / ideal environment")
     modes: list[str] = Field(default_factory=list, description="Cleaning modes")
     surfaces: list[str] = Field(default_factory=list, description="Supported surfaces")
     key_reasons: list[str] = Field(default_factory=list, description="Key selling points")
@@ -238,6 +240,8 @@ class OtherRobotOption(BaseModel):
     time_efficiency: float = Field(description="Time efficiency factor")
     image_urls: list[str] = Field(default_factory=list, description="Product image URLs")
     match_score: float = Field(ge=0, le=100, description="Match score (0-100)")
+    purchase_price: float | None = Field(default=None, description="One-time purchase price")
+    best_for: str | None = Field(default=None, description="Best use case / ideal environment")
     modes: list[str] = Field(default_factory=list, description="Cleaning modes")
     surfaces: list[str] = Field(default_factory=list, description="Supported surfaces")
     key_reasons: list[str] = Field(default_factory=list, description="Key selling points")

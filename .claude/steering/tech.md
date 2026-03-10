@@ -16,8 +16,9 @@ REST API backend service for an agent-led procurement platform. Provides authent
 - **Supabase Python**: Database and auth client (v2.0+)
 - **OpenAI SDK**: LLM integration for agent conversations (v1.0+)
 - **Pinecone Client**: Vector database for RAG (v3.0+)
+- **Stripe**: Payment processing — lease subscriptions, one-time purchases (v7.0+)
 - **python-jose**: JWT token handling
-- **httpx**: Async HTTP client
+- **httpx**: Async HTTP client for Gynger B2B financing API
 - **uvicorn**: ASGI server
 
 ### Application Architecture
@@ -36,8 +37,10 @@ Layered architecture with clear separation of concerns:
 
 ### External Integrations
 - **Supabase Auth**: JWT-based authentication and user management
-- **OpenAI API**: GPT-4o for agent conversations
+- **OpenAI API**: GPT-4o for agent conversations + vision analysis
 - **Pinecone API**: Vector similarity search for product recommendations
+- **Stripe API**: Checkout sessions, subscription management, webhooks
+- **Gynger API**: B2B financing application flow + HMAC webhooks
 - **Protocols**: HTTPS/REST for all external APIs
 
 ## Development Environment
@@ -115,7 +118,7 @@ Layered architecture with clear separation of concerns:
 ## Known Limitations
 
 - **No real-time streaming**: Agent responses are not streamed (can add SSE later)
-- **No caching layer**: All requests hit database directly
-- **No rate limiting**: Rely on Cloud Run and external service limits
+- **In-memory recommendation cache only**: Per-worker TTL cache (3600s); no shared Redis cache across Cloud Run instances
+- **Rate limiting**: In-memory per-worker only — no cross-instance coordination
 - **No background jobs**: All processing is synchronous in request lifecycle
 - **Single region**: Deployed to single GCP region

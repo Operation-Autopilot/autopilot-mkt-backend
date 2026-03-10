@@ -33,16 +33,26 @@ The secret key format `sb_secret_...` replaces the old JWT-based service role ke
 
 ## Database Migrations
 
-Migrations are located in `supabase/migrations/` and follow sequential numbering:
+Migrations are located in `supabase/migrations/` and follow sequential numbering. **Last applied: 014.**
 
 - `001_create_profiles.sql` - User profiles linked to auth.users
 - `002_create_companies.sql` - Companies, members, invitations (with non-recursive RLS)
 - `003_create_conversations.sql` - Conversations and messages
 - `004_create_sessions.sql` - Anonymous session management
 - `005_create_discovery_profiles.sql` - Authenticated user discovery progress
-- `006_create_robot_catalog.sql` - Robot products with Stripe integration
-- `007_create_orders.sql` - Checkout orders
-- `011_add_test_account_flag.sql` - Test account flag for Stripe test mode in production
+- `006_create_robot_catalog.sql` - Robot products with Stripe integration (seeds 13 robots)
+- `007_create_orders.sql` - Checkout orders (`order_status` enum: pending/processing/completed/cancelled/refunded)
+- `008_rename_conversations_user_id.sql` - Rename user_id → profile_id on conversations
+- `009_add_cached_recommendations.sql` - `answers_hash` + `cached_recommendations` on discovery_profiles
+- `010_make_stripe_checkout_session_id_nullable.sql` - Make `stripe_checkout_session_id` nullable (supports Gynger)
+- `011_add_test_account_flag.sql` - `is_test_account` boolean on profiles
+- `012_create_floor_plan_analysis.sql` - Floor plan upload + GPT-4o Vision analysis results
+- `013_add_payment_pending_status.sql` - Add `payment_pending` to order_status enum (ACH)
+- `014_add_gynger_to_orders.sql` - `gynger_application_id` + `payment_provider` columns on orders
+
+**Migrations 015–016 are PLANNED but not yet created:**
+- `015_hubspot_connections.sql` - HubSpot OAuth token storage (planned)
+- `016_session_shares.sql` - Public share link tokens and snapshots (planned)
 
 ### RLS Policy Guidelines
 

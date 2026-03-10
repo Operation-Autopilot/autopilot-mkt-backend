@@ -8,7 +8,32 @@ Services contain the core business logic of the backend. They are located in `sr
 
 ## Service Inventory
 
-<ServiceInventoryTable />
+All 23 service files are listed below, sorted by size. Descriptions are extracted from module docstrings. For the live table see [Service Inventory status page](../status/services.md).
+
+| Service File | Description |
+|--------------|-------------|
+| `agent_service.py` | Agent service for OpenAI-powered conversations |
+| `floor_plan_service.py` | Floor plan analysis service using GPT-4o Vision |
+| `roi_service.py` | ROI calculation and robot recommendation service |
+| `conversation_service.py` | Conversation business logic service |
+| `checkout_service.py` | Checkout and order business logic service |
+| `recommendation_service.py` | Intelligent robot recommendation service using deterministic scoring + semantic search |
+| `robot_catalog_service.py` | Robot catalog business logic service |
+| `discovery_profile_service.py` | Discovery profile business logic service |
+| `auth_service.py` | Authentication business logic service |
+| `session_service.py` | Session business logic service |
+| `gynger_service.py` | Gynger B2B financing service |
+| `rag_service.py` | RAG service for embedding generation and semantic search |
+| `sales_knowledge_service.py` | Sales knowledge service for phase-specific context injection |
+| `floor_plan_prompts.py` | GPT-4o Vision prompts and JSON schema for floor plan analysis |
+| `profile_extraction_service.py` | AI-powered extraction of discovery profile data from conversations |
+| `recommendation_cache.py` | In-memory recommendation cache with TTL-based invalidation |
+| `company_service.py` | Company and member management business logic |
+| `profile_service.py` | User profile CRUD operations |
+| `email_service.py` | Email delivery for invitations and auth notifications |
+| `invitation_service.py` | Company invitation management |
+| `recommendation_prompts.py` | AI prompts for generating recommendation summaries |
+| `extraction_constants.py` | Constants used by the profile extraction pipeline |
 
 ## Key Services
 
