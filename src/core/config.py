@@ -33,6 +33,11 @@ MODEL_PRESETS = {
         "openai_model_fast": "gpt-5-nano",
         "openai_model_scoring": "gpt-5-nano",
     },
+    "gpt4-1-mini": {
+        "openai_model": "gpt-4.1-mini",
+        "openai_model_fast": "gpt-4.1-mini",
+        "openai_model_scoring": "gpt-4.1-mini",
+    },
 }
 
 
