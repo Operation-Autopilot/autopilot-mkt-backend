@@ -28,18 +28,21 @@ create_secret() {
     if [ -f .env ] && grep -q "^${env_var}=" .env; then
         local secret_value=$(grep "^${env_var}=" .env | cut -d '=' -f2- | sed 's/#.*//' | tr -d '"' | tr -d "'" | xargs)
         echo "📝 Creating/updating secret: ${secret_name}"
-        echo "${secret_value}" | gcloud secrets create "${secret_name}" \
+        # Use printf '%s' (not echo) to avoid adding a trailing newline to the secret value.
+        # A trailing newline in a secret (e.g. API key) will make Authorization headers
+        # malformed and cause connection errors at runtime.
+        printf '%s' "${secret_value}" | gcloud secrets create "${secret_name}" \
             --data-file=- \
             --project="${PROJECT_ID}" \
             --replication-policy="automatic" \
             2>/dev/null || \
-        echo "${secret_value}" | gcloud secrets versions add "${secret_name}" \
+        printf '%s' "${secret_value}" | gcloud secrets versions add "${secret_name}" \
             --data-file=- \
             --project="${PROJECT_ID}"
     else
         echo "⚠️  Secret ${secret_name} not found in .env. Creating empty secret."
         echo "   Please update it manually:"
-        echo "   echo -n 'your-value' | gcloud secrets versions add ${secret_name} --data-file=- --project=${PROJECT_ID}"
+        echo "   printf '%s' 'your-value' | gcloud secrets versions add ${secret_name} --data-file=- --project=${PROJECT_ID}"
         echo ""
     fi
 

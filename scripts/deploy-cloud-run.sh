@@ -176,6 +176,13 @@ EOF
 
   # Add CORS_ORIGINS with proper YAML quoting (not a secret)
   echo "CORS_ORIGINS: \"${CORS_ORIGINS_VALUE}\"" >> "${ENV_VARS_FILE}"
+
+  # Add OPENAI_MODEL_PRESET if set in .env (not a secret — just a string like "gpt5-nano")
+  if [ -f .env ] && grep -q "^OPENAI_MODEL_PRESET=" .env; then
+    PRESET_VALUE=$(grep "^OPENAI_MODEL_PRESET=" .env | cut -d '=' -f2- | tr -d '"' | tr -d "'" | xargs)
+    echo "OPENAI_MODEL_PRESET: \"${PRESET_VALUE}\"" >> "${ENV_VARS_FILE}"
+    echo "   ✓ Using OPENAI_MODEL_PRESET=${PRESET_VALUE}"
+  fi
   
   # If not using secrets, add other vars from BASE_ENV_VARS
   # But still skip any secret variables just to be safe
