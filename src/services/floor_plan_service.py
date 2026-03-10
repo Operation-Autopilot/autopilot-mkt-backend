@@ -970,6 +970,16 @@ class FloorPlanService(BaseService):
             return None
 
         data = response.data
+        
+        # Get signed URL for image if storage_path exists
+        image_url = None
+        storage_path = data.get("storage_path")
+        if storage_path:
+            try:
+                image_url = await self._get_signed_url(storage_path)
+            except Exception as e:
+                logger.warning("Failed to generate signed URL for floor plan %s: %s", analysis_id, e)
+        
         return FloorPlanAnalysisResponse(
             id=UUID(data["id"]),
             status=FloorPlanStatus(data["status"]),
@@ -989,6 +999,7 @@ class FloorPlanService(BaseService):
             tokens_used=data.get("tokens_used"),
             analysis_duration_ms=data.get("analysis_duration_ms"),
             created_at=data["created_at"],
+            image_url=image_url,
         )
 
     async def list_analyses(
@@ -1019,6 +1030,15 @@ class FloorPlanService(BaseService):
 
         analyses = []
         for data in response.data:
+            # Get signed URL for image if storage_path exists
+            image_url = None
+            storage_path = data.get("storage_path")
+            if storage_path:
+                try:
+                    image_url = await self._get_signed_url(storage_path)
+                except Exception as e:
+                    logger.warning("Failed to generate signed URL for floor plan %s: %s", data["id"], e)
+            
             analyses.append(
                 FloorPlanAnalysisResponse(
                     id=UUID(data["id"]),
@@ -1039,6 +1059,7 @@ class FloorPlanService(BaseService):
                     tokens_used=data.get("tokens_used"),
                     analysis_duration_ms=data.get("analysis_duration_ms"),
                     created_at=data["created_at"],
+                    image_url=image_url,
                 )
             )
 

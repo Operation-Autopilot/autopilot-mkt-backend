@@ -474,7 +474,8 @@ class RecommendationService:
                 logger.error("Invalid robot ID: %s", robot_id_str)
                 continue
 
-            roi = roi_service.calculate_roi(robot, inputs)
+            # Calculate ROI
+            roi = roi_service.calculate_roi(robot, inputs, answers=request.answers)
 
             raw_image_url = robot.get("image_url", "")
             image_urls = (
@@ -539,6 +540,34 @@ class RecommendationService:
                         specs=robot.get("specs", []),
                     )
                 )
+
+        # Include any candidates that the LLM didn't score as other_options
+        scored_ids = {s.get("robot_id") for s in scored_robots}
+        for cand_id_str, robot in candidate_map.items():
+            if cand_id_str in scored_ids:
+                continue
+            try:
+                robot_id = UUID(cand_id_str)
+            except (ValueError, TypeError):
+                continue
+
+            raw_image_url = robot.get("image_url", "")
+            image_urls = [url.strip() for url in raw_image_url.split(",") if url.strip()] if raw_image_url else []
+
+            other_options.append(OtherRobotOption(
+                robot_id=robot_id,
+                robot_name=robot.get("name", "Unknown"),
+                vendor=robot.get("vendor", robot.get("manufacturer", "Unknown")),
+                category=robot.get("category", "Cleaning Robot"),
+                monthly_lease=float(robot.get("monthly_lease", 0)),
+                time_efficiency=float(robot.get("time_efficiency", 0.8)),
+                image_urls=image_urls,
+                match_score=0.0,
+                modes=robot.get("modes", []),
+                surfaces=robot.get("surfaces", []),
+                key_reasons=robot.get("key_reasons", []),
+                specs=robot.get("specs", []),
+            ))
 
         return RecommendationsResponse(
             recommendations=recommendations,

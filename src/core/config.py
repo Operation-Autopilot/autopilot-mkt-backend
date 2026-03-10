@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -129,6 +129,19 @@ class Settings(BaseSettings):
     gynger_api_key: str = Field(default="", description="Gynger vendor API key")
     gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")  # VERIFY: confirm exact base URL with Gynger before enabling in production
     gynger_webhook_secret: str = Field(default="", description="Gynger webhook signing secret")
+
+    @field_validator(
+        "stripe_secret_key",
+        "stripe_secret_key_test",
+        "stripe_webhook_secret",
+        "stripe_webhook_secret_test",
+        "stripe_publishable_key",
+        mode="before",
+    )
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        """Strip whitespace/newlines from Stripe keys."""
+        return v.strip() if isinstance(v, str) else v
 
     # Email (Resend)
     resend_api_key: str = Field(default="", description="Resend API key for sending emails")

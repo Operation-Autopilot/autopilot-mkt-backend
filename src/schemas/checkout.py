@@ -32,6 +32,7 @@ class CheckoutSessionCreate(BaseModel):
     success_url: HttpUrl = Field(description="URL to redirect after successful checkout")
     cancel_url: HttpUrl = Field(description="URL to redirect if checkout is cancelled")
     customer_email: str | None = Field(default=None, description="Pre-fill customer email")
+    payment_type: Literal["lease", "purchase"] = Field(default="lease", description="Payment type: 'lease' for monthly subscription, 'purchase' for one-time payment")
 
 
 class CheckoutSessionResponse(BaseModel):
@@ -54,6 +55,7 @@ class OrderResponse(BaseModel):
     profile_id: UUID | None = Field(default=None, description="Associated profile ID")
     session_id: UUID | None = Field(default=None, description="Associated session ID")
     status: str = Field(description="Order status")
+    payment_type: str = Field(default="lease", description="Payment type: lease or purchase")
     line_items: list[OrderLineItemSchema] = Field(description="Order line items")
     total_cents: int = Field(description="Total amount in cents")
     currency: str = Field(default="usd", description="Currency code")
