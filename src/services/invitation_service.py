@@ -9,12 +9,13 @@ from src.api.middleware.error_handler import NotFoundError, ValidationError
 from src.core.supabase import get_supabase_client
 from src.models.company import InvitationStatus
 from src.schemas.company import InvitationCreate
+from src.services.base_service import BaseService
 from src.services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
 
 
-class InvitationService:
+class InvitationService(BaseService):
     """Service for managing company invitations."""
 
     DEFAULT_EXPIRATION_DAYS = 7
@@ -51,10 +52,8 @@ class InvitationService:
             "expires_at": expires_at.isoformat(),
         }
 
-        response = (
-            self.client.table("invitations")
-            .insert(invitation_data)
-            .execute()
+        response = await self._execute_sync(
+            self.client.table("invitations").insert(invitation_data)
         )
 
         if not response.data:
@@ -62,21 +61,19 @@ class InvitationService:
         invitation = response.data[0]
 
         # Get company and inviter details for the email
-        company = (
+        company = await self._execute_sync(
             self.client.table("companies")
             .select("name")
             .eq("id", str(company_id))
             .single()
-            .execute()
         )
         company_name = company.data.get("name", "a company") if company.data else "a company"
 
-        inviter = (
+        inviter = await self._execute_sync(
             self.client.table("profiles")
             .select("display_name, email")
             .eq("id", str(invited_by))
             .single()
-            .execute()
         )
         inviter_name = "A team member"
         if inviter.data:
@@ -110,12 +107,11 @@ class InvitationService:
         Returns:
             dict | None: The invitation data or None if not found.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("invitations")
             .select("*, companies(name)")
             .eq("id", str(invitation_id))
             .maybe_single()
-            .execute()
         )
 
         return response.data if response and response.data else None
@@ -143,7 +139,7 @@ class InvitationService:
         if status:
             query = query.eq("status", status.value)
 
-        response = query.order("created_at", desc=True).execute()
+        response = await self._execute_sync(query.order("created_at", desc=True))
 
         return response.data or []
 
@@ -156,13 +152,12 @@ class InvitationService:
         Returns:
             list[dict]: List of pending invitation data with company names.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("invitations")
             .select("*, companies(name)")
             .eq("email", email)
             .eq("status", InvitationStatus.PENDING.value)
             .order("created_at", desc=True)
-            .execute()
         )
 
         return response.data or []
@@ -205,20 +200,21 @@ class InvitationService:
         expires_at = datetime.fromisoformat(invitation["expires_at"].replace("Z", "+00:00"))
         if datetime.now(timezone.utc) > expires_at:
             # Update status to expired
-            self.client.table("invitations").update(
-                {"status": InvitationStatus.EXPIRED.value}
-            ).eq("id", str(invitation_id)).execute()
+            await self._execute_sync(
+                self.client.table("invitations")
+                .update({"status": InvitationStatus.EXPIRED.value})
+                .eq("id", str(invitation_id))
+            )
 
             raise ValidationError("Invitation has expired")
 
         # Check if user is already a member
         company_id = invitation["company_id"]
-        existing_member = (
+        existing_member = await self._execute_sync(
             self.client.table("company_members")
             .select("id")
             .eq("company_id", str(company_id))
             .eq("profile_id", str(profile_id))
-            .execute()
         )
 
         if existing_member.data:
@@ -230,18 +226,19 @@ class InvitationService:
             "profile_id": str(profile_id),
             "role": "member",
         }
-        self.client.table("company_members").insert(member_data).execute()
+        await self._execute_sync(
+            self.client.table("company_members").insert(member_data)
+        )
 
         # Update invitation status
         now = datetime.now(timezone.utc)
-        response = (
+        response = await self._execute_sync(
             self.client.table("invitations")
             .update({
                 "status": InvitationStatus.ACCEPTED.value,
                 "accepted_at": now.isoformat(),
             })
             .eq("id", str(invitation_id))
-            .execute()
         )
 
         if not response.data:
@@ -273,11 +270,10 @@ class InvitationService:
         if invitation["status"] != InvitationStatus.PENDING.value:
             raise ValidationError(f"Invitation has already been {invitation['status']}")
 
-        response = (
+        response = await self._execute_sync(
             self.client.table("invitations")
             .update({"status": InvitationStatus.DECLINED.value})
             .eq("id", str(invitation_id))
-            .execute()
         )
 
         if not response.data:

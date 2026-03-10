@@ -1,6 +1,6 @@
 """ROI and Recommendation Pydantic schemas for API request/response models."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -141,7 +141,7 @@ class ROICalculationResponse(BaseModel):
     calculation: ROICalculation = Field(description="ROI calculation result")
     inputs_used: ROIInputs = Field(description="Inputs used for calculation")
     calculated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When the calculation was performed"
     )
 
@@ -264,7 +264,7 @@ class RecommendationsResponse(BaseModel):
         description="Version of the recommendation algorithm"
     )
     generated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When recommendations were generated"
     )
 

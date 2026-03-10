@@ -1,6 +1,6 @@
 """Common schemas used across the application."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -23,7 +23,7 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     status: HealthStatus = Field(description="Current health status")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Check timestamp")
     version: str = Field(default="0.1.0", description="API version")
 
 
@@ -50,7 +50,7 @@ class ReadinessResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     status: HealthStatus = Field(description="Overall readiness status")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Check timestamp")
     checks: list[CheckResult] = Field(default_factory=list, description="Individual check results")
 
 
@@ -79,7 +79,7 @@ class ErrorResponse(BaseModel):
     message: str = Field(description="Human-readable error description")
     details: list[ErrorDetail] | None = Field(default=None, description="Additional error details")
     request_id: str | None = Field(default=None, description="Request ID for tracing")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Error timestamp")
 
     @classmethod
     def from_exception(

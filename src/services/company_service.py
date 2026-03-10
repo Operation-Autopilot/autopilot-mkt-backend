@@ -6,9 +6,10 @@ from uuid import UUID
 from src.api.middleware.error_handler import AuthorizationError, NotFoundError
 from src.core.supabase import get_supabase_client
 from src.schemas.company import CompanyCreate, CompanyMemberResponse, MemberProfile
+from src.services.base_service import BaseService
 
 
-class CompanyService:
+class CompanyService(BaseService):
     """Service for managing companies and their members."""
 
     def __init__(self) -> None:
@@ -35,10 +36,8 @@ class CompanyService:
             "owner_id": str(owner_profile_id),
         }
 
-        company_response = (
-            self.client.table("companies")
-            .insert(company_data)
-            .execute()
+        company_response = await self._execute_sync(
+            self.client.table("companies").insert(company_data)
         )
 
         if not company_response.data:
@@ -52,7 +51,9 @@ class CompanyService:
             "role": "owner",
         }
 
-        self.client.table("company_members").insert(member_data).execute()
+        await self._execute_sync(
+            self.client.table("company_members").insert(member_data)
+        )
 
         return company
 
@@ -65,12 +66,11 @@ class CompanyService:
         Returns:
             dict | None: The company data or None if not found.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("companies")
             .select("*")
             .eq("id", str(company_id))
             .maybe_single()
-            .execute()
         )
 
         return response.data if response and response.data else None
@@ -87,12 +87,11 @@ class CompanyService:
             dict | None: The company data or None if user has no company.
         """
         # Get user's company membership
-        membership_response = (
+        membership_response = await self._execute_sync(
             self.client.table("company_members")
             .select("company_id")
             .eq("profile_id", str(profile_id))
             .limit(1)
-            .execute()
         )
 
         if not membership_response.data:
@@ -113,12 +112,11 @@ class CompanyService:
         Returns:
             bool: True if the profile is a member.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("company_members")
             .select("id")
             .eq("company_id", str(company_id))
             .eq("profile_id", str(profile_id))
-            .execute()
         )
 
         return len(response.data) > 0
@@ -133,12 +131,11 @@ class CompanyService:
         Returns:
             bool: True if the profile is the owner.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("companies")
             .select("id")
             .eq("id", str(company_id))
             .eq("owner_id", str(profile_id))
-            .execute()
         )
 
         return len(response.data) > 0
@@ -153,13 +150,12 @@ class CompanyService:
         Returns:
             str | None: The member's role or None if not a member.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("company_members")
             .select("role")
             .eq("company_id", str(company_id))
             .eq("profile_id", str(profile_id))
             .maybe_single()
-            .execute()
         )
 
         return response.data["role"] if response.data else None
@@ -173,11 +169,10 @@ class CompanyService:
         Returns:
             list[CompanyMemberResponse]: List of company members with profiles.
         """
-        response = (
+        response = await self._execute_sync(
             self.client.table("company_members")
             .select("id, company_id, profile_id, role, joined_at, profiles(id, display_name, email, avatar_url)")
             .eq("company_id", str(company_id))
-            .execute()
         )
 
         members = []
@@ -223,10 +218,8 @@ class CompanyService:
             "role": role,
         }
 
-        response = (
-            self.client.table("company_members")
-            .insert(member_data)
-            .execute()
+        response = await self._execute_sync(
+            self.client.table("company_members").insert(member_data)
         )
 
         return response.data[0]
@@ -264,8 +257,11 @@ class CompanyService:
             raise NotFoundError("Member not found in company")
 
         # Remove the member
-        self.client.table("company_members").delete().eq(
-            "company_id", str(company_id)
-        ).eq("profile_id", str(profile_id)).execute()
+        await self._execute_sync(
+            self.client.table("company_members")
+            .delete()
+            .eq("company_id", str(company_id))
+            .eq("profile_id", str(profile_id))
+        )
 
         return True
