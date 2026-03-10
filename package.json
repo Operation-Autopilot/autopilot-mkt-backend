@@ -8,7 +8,10 @@
     "docs:build": "npm run docs:generate && vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "docs:generate": "node scripts/generate-dmms-docs.mjs",
-    "dmms:migrate": "node scripts/migrate-dmms-hierarchy.mjs"
+    "dmms:migrate": "node scripts/migrate-dmms-hierarchy.mjs",
+    "openapi:export": "node scripts/export-openapi.mjs",
+    "steering:update": "node scripts/update-steering.mjs",
+    "hooks:install": "node scripts/install-git-hooks.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2"

@@ -4,181 +4,181 @@ title: API Routes
 
 # API Routes
 
-All route modules live in `src/api/routes/`. Each module defines a FastAPI `APIRouter` that is registered in `src/main.py`.
+All endpoints are prefixed with `/api/v1` except health checks (mounted at root). Authentication modes:
 
-## Route Modules
+- **JWT** — `Authorization: Bearer <token>` (Supabase JWT)
+- **Session** — cookie `autopilot_session` or `X-Session-Token` header (anonymous users)
+- **Dual** — accepts either JWT or session token
+- **Signature** — HMAC webhook signature verification (no user auth)
+- **Public** — no authentication required
 
-### health.py
+---
 
-Health check endpoint for load balancers and uptime monitoring.
+## Health
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Returns service health status |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | Public | Liveness check — returns 200 if service is running |
+| `GET` | `/health/ready` | Public | Readiness check — verifies DB and Pinecone connectivity |
+| `GET` | `/health/auth` | JWT | Authenticated health check — validates JWT token |
+| `GET` | `/health/knowledge` | Public | Knowledge files status for debugging |
 
-```python
-@router.get("/health")
-async def health_check():
-    return {"status": "ok"}
-```
+---
 
-### auth.py
+## Auth
 
-Authentication endpoints powered by Supabase Auth.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/auth/signup` | Public | Create new account with email + password |
+| `POST` | `/api/v1/auth/verify-email` | Public | Verify email with token (POST form) |
+| `GET` | `/api/v1/auth/verify-email` | Public | Verify email via GET (email link redirect) |
+| `POST` | `/api/v1/auth/resend-verification` | Public | Resend verification email |
+| `POST` | `/api/v1/auth/login` | Public | Authenticate and receive JWT |
+| `POST` | `/api/v1/auth/logout` | JWT | Invalidate session |
+| `GET` | `/api/v1/auth/me` | JWT | Get current user info |
+| `POST` | `/api/v1/auth/forgot-password` | Public | Request password reset email |
+| `POST` | `/api/v1/auth/reset-password` | Public | Reset password using email token |
+| `POST` | `/api/v1/auth/change-password` | JWT | Change password (requires current password) |
+| `POST` | `/api/v1/auth/refresh` | Public | Refresh access token using refresh token |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/auth/signup` | Register a new user account |
-| `POST` | `/api/auth/login` | Authenticate and receive tokens |
-| `POST` | `/api/auth/logout` | Invalidate current session |
-| `POST` | `/api/auth/refresh` | Refresh an expired access token |
-| `POST` | `/api/auth/password-reset` | Initiate password reset flow |
+---
 
-### profiles.py
+## Profiles
 
-User profile management.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/profiles/me` | JWT | Get authenticated user's profile |
+| `PUT` | `/api/v1/profiles/me` | JWT | Update authenticated user's profile |
+| `GET` | `/api/v1/profiles/me/companies` | JWT | List companies the user belongs to |
+| `POST` | `/api/v1/profiles/me/test-account` | JWT | Enable or disable Stripe test mode for account |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/profiles/me` | Get current user's profile |
-| `PUT` | `/api/profiles/me` | Update current user's profile |
-| `GET` | `/api/profiles/{id}` | Get a profile by ID |
+---
 
-### companies.py
+## Companies
 
-Company and team member management.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/companies` | JWT | Create new company (caller becomes owner) |
+| `GET` | `/api/v1/companies/me` | JWT | Get current user's company |
+| `GET` | `/api/v1/companies/{company_id}` | JWT | Get company details (member access required) |
+| `GET` | `/api/v1/companies/{company_id}/members` | JWT | List company members |
+| `DELETE` | `/api/v1/companies/{company_id}/members/{member_profile_id}` | JWT | Remove member (owner only) |
+| `POST` | `/api/v1/companies/{company_id}/invitations` | JWT | Create invitation (owner only) |
+| `GET` | `/api/v1/companies/{company_id}/invitations` | JWT | List invitations (member access) |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/companies` | Create a new company |
-| `GET` | `/api/companies/{id}` | Get company details |
-| `PUT` | `/api/companies/{id}` | Update company information |
-| `GET` | `/api/companies/{id}/members` | List company members |
-| `POST` | `/api/companies/{id}/members` | Add a member to company |
-| `DELETE` | `/api/companies/{id}/members/{member_id}` | Remove a company member |
+---
 
-### conversations.py
+## Invitations
 
-Conversation and message management for the AI agent chat.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/invitations` | JWT | List pending invitations for current user |
+| `POST` | `/api/v1/invitations/{invitation_id}/accept` | JWT | Accept invitation and join company |
+| `POST` | `/api/v1/invitations/{invitation_id}/decline` | JWT | Decline invitation |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/conversations` | Create a new conversation |
-| `GET` | `/api/conversations` | List user's conversations |
-| `GET` | `/api/conversations/{id}` | Get conversation with messages |
-| `DELETE` | `/api/conversations/{id}` | Delete a conversation |
-| `POST` | `/api/conversations/{id}/messages` | Send a message (triggers AI response) |
-| `GET` | `/api/conversations/{id}/messages` | List messages in a conversation |
+---
 
-### discovery.py
+## Sessions
 
-Discovery flow endpoints for guided product recommendation.
+Anonymous sessions persist discovery state for unauthenticated users. Authenticated users use the [Discovery Profile](#discovery) endpoints instead.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/discovery/start` | Start a new discovery session |
-| `GET` | `/api/discovery/{id}` | Get discovery session state |
-| `POST` | `/api/discovery/{id}/respond` | Submit a discovery response |
-| `GET` | `/api/discovery/{id}/profile` | Get extracted discovery profile |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/sessions` | Public | Create anonymous session; sets httpOnly cookie |
+| `GET` | `/api/v1/sessions/me` | Session | Get current session — returns 400 if caller has a JWT |
+| `PUT` | `/api/v1/sessions/me` | Session | Update session: phase, answers, ROI inputs, product selection |
+| `POST` | `/api/v1/sessions/claim` | JWT + Session | Claim anonymous session after signup; transfers conversation + orders |
 
-### sessions.py
+---
 
-Anonymous session management for unauthenticated users.
+## Discovery
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/sessions` | Create an anonymous session |
-| `GET` | `/api/sessions/{id}` | Get session details |
-| `PUT` | `/api/sessions/{id}` | Update session metadata |
+Authenticated counterpart to sessions — persists discovery data per user profile.
 
-### robots.py
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/discovery` | JWT | Get discovery profile (auto-created on first access) |
+| `PUT` | `/api/v1/discovery` | JWT | Update discovery profile |
 
-Robot catalog browsing with filtering and AI-powered recommendations.
+---
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/robots` | List robots with pagination |
-| `GET` | `/api/robots/{id}` | Get robot details |
-| `GET` | `/api/robots/filters` | Get available filter options |
-| `GET` | `/api/robots/search` | Search robots by query |
-| `POST` | `/api/robots/recommendations` | Get AI-powered robot recommendations |
+## Conversations
 
-### checkout.py
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/conversations` | Dual | Create new conversation |
+| `GET` | `/api/v1/conversations` | JWT | List user's conversations (paginated) |
+| `POST` | `/api/v1/conversations/reset` | Dual | Soft-reset — start fresh conversation |
+| `GET` | `/api/v1/conversations/current` | Dual | Get or create current conversation with message context |
+| `GET` | `/api/v1/conversations/{conversation_id}` | Dual | Get conversation details |
+| `DELETE` | `/api/v1/conversations/{conversation_id}` | JWT | Delete conversation and all messages |
+| `POST` | `/api/v1/conversations/{conversation_id}/messages` | Dual | Send message; returns GPT-4o agent response (rate-limited for sessions) |
+| `GET` | `/api/v1/conversations/{conversation_id}/messages` | Dual | List messages (paginated) |
+| `POST` | `/api/v1/conversations/{conversation_id}/transition` | Dual | Generate AI phase-transition message (discovery → ROI → greenlight) |
 
-Stripe checkout session creation for purchasing robots.
+---
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/checkout/sessions` | Create a Stripe checkout session |
-| `GET` | `/api/checkout/sessions/{id}` | Get checkout session status |
+## Robots
 
-### roi.py
+Public — no authentication required.
 
-ROI (Return on Investment) calculation endpoints.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/robots` | Public | List robots with filtering, sorting, pagination, and search |
+| `GET` | `/api/v1/robots/filters` | Public | Available filter options (categories, methods, price ranges) |
+| `GET` | `/api/v1/robots/{robot_id}` | Public | Get single robot details |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/roi/calculate` | Calculate ROI for a robot deployment |
-| `GET` | `/api/roi/{id}` | Get a saved ROI calculation |
+See [Robot Catalog](./services.md) for the 13 active SKUs.
 
-### webhooks.py
+---
 
-Stripe webhook handlers for payment event processing.
+## Floor Plans
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/webhooks/stripe` | Handle Stripe webhook events |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/floor-plans/analyze` | Dual | Upload floor plan image; GPT-4o Vision extracts sqft and cleanable zones |
+| `GET` | `/api/v1/floor-plans` | Dual | List floor plan analyses |
+| `GET` | `/api/v1/floor-plans/{analysis_id}` | Dual | Get specific analysis result |
+| `DELETE` | `/api/v1/floor-plans/{analysis_id}` | Dual | Delete floor plan analysis |
 
-::: warning
-Webhook endpoints skip standard auth middleware. They verify requests using Stripe's webhook signature instead.
-:::
+---
 
-### invitations.py
+## ROI & Recommendations
 
-Company invitation management.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/roi/calculate` | Dual | Calculate ROI for a specific robot given discovery answers |
+| `POST` | `/api/v1/roi/recommendations` | Dual | Get ranked robot recommendations for provided answers |
+| `POST` | `/api/v1/roi/recommendations/session` | Session | Get recommendations using current session's answers |
+| `POST` | `/api/v1/roi/recommendations/discovery` | JWT | Get recommendations from discovery profile (result cached per answers hash) |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/invitations` | Send a company invitation |
-| `GET` | `/api/invitations` | List pending invitations |
-| `POST` | `/api/invitations/{id}/accept` | Accept an invitation |
-| `POST` | `/api/invitations/{id}/decline` | Decline an invitation |
+---
 
-### floor_plans.py
+## Greenlight
 
-Floor plan upload and management for facility mapping.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/greenlight/validate` | Dual | Validate greenlight selections before checkout |
+| `POST` | `/api/v1/greenlight/confirm` | Dual | Confirm greenlight; returns `next_step`: `checkout` \| `contact_sales` \| `schedule_demo` |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/floor-plans` | Upload a floor plan file |
-| `GET` | `/api/floor-plans` | List uploaded floor plans |
-| `GET` | `/api/floor-plans/{id}` | Get floor plan details |
-| `DELETE` | `/api/floor-plans/{id}` | Delete a floor plan |
+---
 
-## Route Registration Pattern
+## Checkout & Orders
 
-All routers follow a consistent registration pattern in `src/main.py`:
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/checkout/session` | Dual | Create Stripe Checkout Session (`mode: subscription` for lease, `payment` for purchase) |
+| `POST` | `/api/v1/checkout/gynger-session` | Dual | Create Gynger B2B financing application |
+| `GET` | `/api/v1/orders` | Dual | List orders for current user or session |
+| `GET` | `/api/v1/orders/{order_id}` | Dual | Get order details — returns 403 if not owner |
 
-```python
-from src.api.routes import (
-    health, auth, profiles, companies,
-    conversations, discovery, sessions,
-    robots, checkout, roi, webhooks,
-    invitations, floor_plans,
-)
+---
 
-app.include_router(health.router, tags=["Health"])
-app.include_router(auth.router, prefix="/api", tags=["Auth"])
-app.include_router(profiles.router, prefix="/api", tags=["Profiles"])
-app.include_router(companies.router, prefix="/api", tags=["Companies"])
-# ... etc.
-```
+## Webhooks
 
-## Authentication
+Raw body required for HMAC signature verification. No user authentication.
 
-Most routes require a valid JWT access token passed in the `Authorization: Bearer <token>` header. Exceptions include:
-
-- `GET /health` — No auth required
-- `POST /api/auth/signup` and `POST /api/auth/login` — No auth required
-- `POST /api/sessions` — No auth required (anonymous access)
-- `POST /api/webhooks/stripe` — Uses Stripe signature verification
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/webhooks/stripe` | Signature | Stripe events: `checkout.session.completed`, `checkout.session.expired`, async payment events |
+| `POST` | `/api/v1/webhooks/gynger` | Signature | Gynger financing events: application approved / rejected / pending |

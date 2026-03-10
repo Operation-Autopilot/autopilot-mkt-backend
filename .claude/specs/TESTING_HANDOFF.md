@@ -1,4 +1,7 @@
-# Testing Handoff: Sessions, Discovery & Stripe Checkout
+# Testing Handoff: Sessions, Discovery, Stripe & Gynger Checkout
+
+> **Last updated: March 2026.** Backend now on port **8080** (not 8000). Last migration: **014**. Gynger B2B financing is fully implemented alongside Stripe. See `docs/status/roadmap.md` for what's planned but not yet shipped.
+
 
 This document provides testing instructions for the new session management, discovery profile, and Stripe checkout functionality.
 
@@ -21,14 +24,9 @@ SESSION_COOKIE_SECURE=false          # Set true in production
 
 ### Database Migrations
 ```bash
-# Run migrations in order
+# Run all migrations
 supabase db push
-# Or manually run:
-# 005_create_sessions.sql
-# 006_create_discovery_profiles.sql
-# 007_create_robot_catalog.sql (includes seed data)
-# 008_create_orders.sql
-# 009_update_conversations.sql
+# Migrations 001–014 must all be applied. Last: 014_add_gynger_to_orders.sql
 ```
 
 ### Stripe CLI (for webhook testing)
@@ -38,7 +36,7 @@ brew install stripe/stripe-cli/stripe
 
 # Login and forward webhooks to local server
 stripe login
-stripe listen --forward-to localhost:8000/api/v1/webhooks/stripe
+stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe
 ```
 
 ---
@@ -48,7 +46,7 @@ stripe listen --forward-to localhost:8000/api/v1/webhooks/stripe
 ### Create Session
 ```bash
 # Creates anonymous session and sets cookie
-curl -X POST http://localhost:8000/api/v1/sessions \
+curl -X POST http://localhost:8080/api/v1/sessions \
   -c cookies.txt \
   -v
 
@@ -59,7 +57,7 @@ curl -X POST http://localhost:8000/api/v1/sessions \
 ### Get Current Session
 ```bash
 # Get session data using cookie
-curl http://localhost:8000/api/v1/sessions/me \
+curl http://localhost:8080/api/v1/sessions/me \
   -b cookies.txt
 
 # Expected: 200 OK with session data
@@ -71,7 +69,7 @@ curl http://localhost:8000/api/v1/sessions/me \
 ### Update Session
 ```bash
 # Update discovery progress
-curl -X PUT http://localhost:8000/api/v1/sessions/me \
+curl -X PUT http://localhost:8080/api/v1/sessions/me \
   -b cookies.txt \
   -H "Content-Type: application/json" \
   -d '{
@@ -101,7 +99,7 @@ curl -X PUT http://localhost:8000/api/v1/sessions/me \
 ### Claim Session (after signup)
 ```bash
 # Requires both JWT and session cookie
-curl -X POST http://localhost:8000/api/v1/sessions/claim \
+curl -X POST http://localhost:8080/api/v1/sessions/claim \
   -b cookies.txt \
   -H "Authorization: Bearer <jwt_token>"
 
@@ -129,7 +127,7 @@ curl -X POST http://localhost:8000/api/v1/sessions/claim \
 
 ### Get Discovery Profile
 ```bash
-curl http://localhost:8000/api/v1/discovery \
+curl http://localhost:8080/api/v1/discovery \
   -H "Authorization: Bearer <jwt_token>"
 
 # Expected: 200 OK with discovery profile
@@ -138,7 +136,7 @@ curl http://localhost:8000/api/v1/discovery \
 
 ### Update Discovery Profile
 ```bash
-curl -X PUT http://localhost:8000/api/v1/discovery \
+curl -X PUT http://localhost:8080/api/v1/discovery \
   -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -161,7 +159,7 @@ curl -X PUT http://localhost:8000/api/v1/discovery \
 
 ### List All Robots
 ```bash
-curl http://localhost:8000/api/v1/robots
+curl http://localhost:8080/api/v1/robots
 
 # Expected: 200 OK
 # Response: {
@@ -180,7 +178,7 @@ curl http://localhost:8000/api/v1/robots
 
 ### Get Single Robot
 ```bash
-curl http://localhost:8000/api/v1/robots/{robot_id}
+curl http://localhost:8080/api/v1/robots/{robot_id}
 
 # Expected: 200 OK with robot data
 # Error: 404 if not found
@@ -190,7 +188,7 @@ curl http://localhost:8000/api/v1/robots/{robot_id}
 - [ ] No authentication required (public endpoints)
 - [ ] Only active robots returned by default
 - [ ] Response includes both snake_case and camelCase fields
-- [ ] Seed data contains 5 robots (Pudu CC1 Pro, Pudu MT1 Vac, MaxBattery Pro, FoodRunner V2, BudgetVac Mini)
+- [ ] Seed data contains 13 robots (Pudu CC1 Pro, CC1, MT1 Vac; Avidbots Neo 2W, Kas; Tennant T7AMR, T380AMR; Gausium Phantas, Vacuum 40; Keenon C40, C30; Pudu T300, T600)
 
 ---
 
@@ -198,7 +196,7 @@ curl http://localhost:8000/api/v1/robots/{robot_id}
 
 ### Create Checkout Session (Anonymous)
 ```bash
-curl -X POST http://localhost:8000/api/v1/checkout/session \
+curl -X POST http://localhost:8080/api/v1/checkout/session \
   -b cookies.txt \
   -H "Content-Type: application/json" \
   -d '{
@@ -217,7 +215,7 @@ curl -X POST http://localhost:8000/api/v1/checkout/session \
 
 ### Create Checkout Session (Authenticated)
 ```bash
-curl -X POST http://localhost:8000/api/v1/checkout/session \
+curl -X POST http://localhost:8080/api/v1/checkout/session \
   -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -243,11 +241,11 @@ curl -X POST http://localhost:8000/api/v1/checkout/session \
 ### List My Orders
 ```bash
 # Anonymous (session cookie)
-curl http://localhost:8000/api/v1/orders \
+curl http://localhost:8080/api/v1/orders \
   -b cookies.txt
 
 # Authenticated
-curl http://localhost:8000/api/v1/orders \
+curl http://localhost:8080/api/v1/orders \
   -H "Authorization: Bearer <jwt_token>"
 
 # Expected: 200 OK
@@ -256,7 +254,7 @@ curl http://localhost:8000/api/v1/orders \
 
 ### Get Single Order
 ```bash
-curl http://localhost:8000/api/v1/orders/{order_id} \
+curl http://localhost:8080/api/v1/orders/{order_id} \
   -b cookies.txt
 
 # Expected: 200 OK if owner, 403 if not owner, 404 if not found
@@ -274,7 +272,7 @@ curl http://localhost:8000/api/v1/orders/{order_id} \
 
 ### Start Webhook Listener
 ```bash
-stripe listen --forward-to localhost:8000/api/v1/webhooks/stripe
+stripe listen --forward-to localhost:8080/api/v1/webhooks/stripe
 # Note the webhook signing secret (whsec_...)
 ```
 
@@ -290,7 +288,7 @@ stripe trigger checkout.session.expired
 ### Manual Webhook Test
 ```bash
 # The webhook endpoint expects raw body + signature header
-curl -X POST http://localhost:8000/api/v1/webhooks/stripe \
+curl -X POST http://localhost:8080/api/v1/webhooks/stripe \
   -H "Content-Type: application/json" \
   -H "Stripe-Signature: <signature>" \
   -d '{"type": "checkout.session.completed", ...}'
