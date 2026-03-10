@@ -721,7 +721,7 @@ async def send_message(
                     extraction_result.get("keys_extracted", []),
                 )
         except Exception as e:
-            logger.warning("Profile extraction failed for conversation %s: %s", conversation_id, e)
+            logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
 
     background_tasks.add_task(_run_extraction)
 

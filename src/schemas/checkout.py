@@ -69,3 +69,24 @@ class OrderListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     items: list[OrderResponse] = Field(description="List of orders")
+
+
+class GyngerSessionCreate(BaseModel):
+    """Schema for creating a Gynger financing session via POST /checkout/gynger-session."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    product_id: UUID = Field(description="Robot product UUID to finance")
+    success_url: HttpUrl = Field(description="URL to redirect after Gynger approval")
+    cancel_url: HttpUrl = Field(description="URL to redirect if financing is cancelled")
+    customer_email: str | None = Field(default=None, description="Pre-fill customer email in Gynger form")
+
+
+class GyngerSessionResponse(BaseModel):
+    """Schema for Gynger financing session creation response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    application_url: str = Field(description="Gynger application URL to redirect the user to")
+    order_id: UUID = Field(description="Created order UUID")
+    gynger_application_id: str = Field(description="Gynger's application reference ID")

@@ -2,12 +2,12 @@
 
 import logging
 import time
-import traceback
 from typing import Any, Callable
 
 from fastapi import HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 
+from src.core.config import get_settings
 from src.core.token_budget import TokenBudgetError
 from src.schemas.common import ErrorResponse
 
@@ -236,13 +236,20 @@ async def error_handler_middleware(request: Request, call_next: Callable[[Reques
         )
 
     except Exception as e:
-        # Unexpected exceptions - log full stack trace
-        logger.error(
-            "Unhandled exception: %s\n%s",
-            str(e),
-            traceback.format_exc(),
-            extra={"request_id": request_id},
-        )
+        # Unexpected exceptions - include full stack trace in debug mode only
+        _settings = get_settings()
+        if _settings.debug:
+            logger.error(
+                "Unhandled exception",
+                exc_info=True,
+                extra={"request_id": request_id},
+            )
+        else:
+            logger.error(
+                "Unhandled exception: %s",
+                type(e).__name__,
+                extra={"request_id": request_id},
+            )
         return create_error_response(
             error_type="internal_error",
             message="An unexpected error occurred",

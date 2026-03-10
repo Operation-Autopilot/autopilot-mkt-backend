@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+import urllib.parse
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -15,6 +16,12 @@ from src.core.supabase import get_supabase_client
 from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_REDIRECT_DOMAINS = {
+    "localhost",
+    "tryautopilot.com",
+    "autopilot-marketplace-discovery-to.vercel.app",
+}
 
 
 class CheckoutService:
@@ -30,6 +37,43 @@ class CheckoutService:
     async def _execute_sync(self, query):
         """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
         return await asyncio.to_thread(query.execute)
+
+    def _validate_redirect_url(self, url: str) -> str:
+        """Validate that a redirect URL uses an allowed domain to prevent open redirects.
+
+        Args:
+            url: The redirect URL to validate.
+
+        Returns:
+            The validated URL (unchanged).
+
+        Raises:
+            ValueError: If the URL's domain is not in ALLOWED_REDIRECT_DOMAINS.
+        """
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname or ""
+        if not any(hostname == d or hostname.endswith("." + d) for d in ALLOWED_REDIRECT_DOMAINS):
+            raise ValueError(f"Redirect URL domain not allowed: {hostname}")
+        return url
+
+    async def cleanup_orphaned_orders(self, max_age_minutes: int = 60) -> int:
+        """
+        Cancel orders that have been in 'pending' state without a Stripe session ID
+        for longer than max_age_minutes. Returns number of orders cleaned up.
+        """
+        cutoff = (datetime.utcnow() - timedelta(minutes=max_age_minutes)).isoformat()
+        query = (
+            self.client.table("orders")
+            .update({"status": "cancelled", "metadata": {"cancellation_reason": "orphaned_pending"}})
+            .eq("status", "pending")
+            .is_("stripe_checkout_session_id", "null")
+            .lt("created_at", cutoff)
+        )
+        result = await self._execute_sync(query)
+        count = len(result.data) if result.data else 0
+        if count > 0:
+            logger.warning("Cleaned up %d orphaned pending orders", count)
+        return count
 
     async def create_checkout_session(
         self,
@@ -59,6 +103,16 @@ class CheckoutService:
             ValueError: If product not found or inactive, or Stripe not configured.
             Exception: If Stripe API call fails.
         """
+        # Clean up any orphaned orders from previous failed attempts (best-effort)
+        try:
+            await self.cleanup_orphaned_orders()
+        except Exception:
+            pass  # Non-critical, don't fail the checkout
+
+        # Validate redirect URLs to prevent open redirect attacks
+        self._validate_redirect_url(success_url)
+        self._validate_redirect_url(cancel_url)
+
         # Resolve test mode: explicit flag > environment-based detection
         settings = get_settings()
         use_test_mode = is_test_account if is_test_account is not None else settings.is_stripe_test_mode
@@ -471,15 +525,23 @@ class CheckoutService:
         logger.info("Attempting webhook verification with %d secret(s)", len(secrets_to_try))
 
         last_error = None
+        production_secret_failed = False
         for secret, is_test in secrets_to_try:
             try:
                 event = self.stripe.Webhook.construct_event(
                     payload, sig_header, secret
                 )
-                logger.info("Webhook verified with %s secret", "test" if is_test else "production")
+                if is_test and production_secret_failed:
+                    logger.warning(
+                        "Webhook verified with TEST secret (production secret failed) - check Stripe webhook config"
+                    )
+                else:
+                    logger.info("Webhook verified with %s secret", "test" if is_test else "production")
                 return event, is_test
             except stripe.error.SignatureVerificationError as e:
                 last_error = e
+                if not is_test:
+                    production_secret_failed = True
                 continue
 
         logger.warning("Invalid webhook signature: %s", str(last_error))
