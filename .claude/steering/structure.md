@@ -40,6 +40,7 @@ autopilot-mkt-backend/
 │   ├── floor_plan_prompts.py
 │   ├── floor_plan_service.py
 │   ├── gynger_service.py
+│   ├── hubspot_service.py
 │   ├── invitation_service.py
 │   ├── profile_extraction_service.py
 │   ├── profile_service.py
