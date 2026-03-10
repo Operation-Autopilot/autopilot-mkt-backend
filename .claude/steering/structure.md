@@ -100,8 +100,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (14 files)
-    └── ...014_add_gynger_to_orders.sql  ← last applied
+└── supabase/migrations/  (17 files)
+    └── ...017_pickleball_messaging.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -291,4 +291,7 @@ class {Resource}Response({Resource}Base):
 - `012_create_floor_plan_analysis.sql` — Create floor_plan_analyses table
 - `013_add_payment_pending_status.sql` — Add 'payment_pending' status to order_status enum for ACH delayed payments
 - `014_add_gynger_to_orders.sql` — Add Gynger financing columns to orders table
+- `015_add_purchase_price_ids.sql` — Add Stripe purchase price IDs to robot_catalog for one-time purchase support
+- `016_enable_sessions_rls.sql` — Enable RLS on sessions table to protect sensitive session_token column
+- `017_pickleball_messaging.sql` — 017_pickleball_messaging.sql
 <!-- AUTO-MIGRATIONS:END -->
