@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     stripe_webhook_secret_test: str = Field(default="", description="Stripe test webhook signing secret (for test accounts)")
     stripe_publishable_key: str = Field(default="", description="Stripe publishable key (for frontend)")
 
+    # Gynger B2B Financing
+    gynger_api_key: str = Field(default="", description="Gynger vendor API key")
+    gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")  # TODO: confirm with Gynger docs
+    gynger_webhook_secret: str = Field(default="", description="Gynger webhook signing secret")
+
     # Email (Resend)
     resend_api_key: str = Field(default="", description="Resend API key for sending emails")
     email_from_address: str = Field(
