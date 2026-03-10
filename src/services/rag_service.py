@@ -83,7 +83,7 @@ class RAGService:
 
         # Add pricing information
         if monthly_lease := robot_data.get("monthly_lease"):
-            parts.append(f"Monthly lease: ${float(monthly_lease):,.0f}")
+            parts.append(f"Monthly cost: ${float(monthly_lease):,.0f}")
         if purchase_price := robot_data.get("purchase_price"):
             parts.append(f"Purchase price: ${float(purchase_price):,.0f}")
 

@@ -269,6 +269,7 @@ class FloorPlanAnalysisResponse(BaseModel):
     tokens_used: int | None = Field(default=None, description="GPT-4o tokens used")
     analysis_duration_ms: int | None = Field(default=None, description="Analysis duration in milliseconds")
     created_at: datetime = Field(description="Upload timestamp")
+    image_url: str | None = Field(default=None, description="Signed URL for floor plan image")
 
 
 class FloorPlanWithRecommendationsResponse(BaseModel):

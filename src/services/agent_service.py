@@ -193,6 +193,7 @@ Your role in the Discovery phase:
 
 Guidelines:
 - Ask one or two questions at a time, don't overwhelm
+- Keep responses to 2-3 sentences max - be direct and concise
 - Summarize what you've learned periodically
 - When you have a good understanding, suggest moving to ROI analysis
 - Stay focused on understanding their needs before recommending solutions
@@ -208,6 +209,7 @@ Your role in the ROI phase:
 
 Guidelines:
 - Use concrete numbers when possible
+- Keep responses to 2-3 sentences max - be direct and concise
 - Ask for specifics to make calculations accurate
 - Present projections clearly with assumptions stated
 - When ROI is established, suggest moving to product selection""",
@@ -221,7 +223,8 @@ Your role in the Greenlight phase:
 
 Guidelines:
 - Base recommendations on information gathered in discovery and ROI analysis
-- Be clear about pricing - we offer monthly lease subscriptions
+- Keep responses to 2-3 sentences max - be direct and concise
+- Be clear about pricing - we offer monthly subscriptions
 - Help compare selected robots and confirm their choices
 - Provide robot recommendations from our catalog when asked
 - Encourage them to proceed to checkout when ready
@@ -384,7 +387,7 @@ class AgentService:
             ConversationPhase.GREENLIGHT: (
                 "[MOCK] Great choice! Based on your requirements, I'd recommend looking at "
                 "our collaborative robot solutions. They start at around $2,500/month on a "
-                "lease basis. Would you like me to add this to your cart so you can review "
+                "monthly basis. Would you like me to add this to your cart so you can review "
                 "the full details?"
             ),
         }
@@ -677,7 +680,7 @@ class AgentService:
                 f"- **{r.get('name', 'Unknown')}**: {r.get('category', 'Robot')} | "
                 f"Best for: {r.get('best_for', 'general use')} | "
                 f"Modes: {', '.join(r.get('modes', []))} | "
-                f"Monthly lease: ${r.get('monthly_lease', 0):,.0f}"
+                f"Monthly cost: ${r.get('monthly_lease', 0):,.0f}"
                 for r in robot_catalog
             )
         else:
@@ -733,6 +736,7 @@ If the user says "I'm not sure" or "I don't know", acknowledge their uncertainty
 11. Keep your response concise — 2-3 short sentences plus any question. Never exceed 100 words.
 
 TONE: Premium, consultative, efficient. Like a senior consultant who values the client's time.
+Keep responses to 2-3 sentences max. Be concise - don't over-explain or repeat what the user told you.
 Don't be robotic or interrogative. If user gives rich context, adapt and skip redundant questions.
 
 IMPORTANT: Your response must be valid JSON with content (string), chips (array), and ready_for_roi (boolean)."""
@@ -1032,7 +1036,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             if transition_type == "discovery_to_roi":
                 content = f"Excellent! Based on what you've shared about {company_name or 'your facility'}, I've prepared a detailed ROI analysis. Let's see how automation can transform your operations."
             else:
-                content = f"Great progress! You're ready to move forward with deployment. Let's finalize the logistics - you can set a target start date, invite team members, and secure your lease."
+                content = f"Great progress! You're ready to move forward with deployment. Let's finalize the logistics - you can set a target start date, invite team members, and get started."
             result = {"content": content, "chips": default_chips}
         else:
             try:
@@ -1114,7 +1118,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
 SELECTED ROBOT:
 - Name: {selected_robot.get('name', 'Unknown')}
 - Category: {selected_robot.get('category', 'Cleaning Robot')}
-- Monthly Lease: ${selected_robot.get('monthly_lease', 0):,.0f}
+- Monthly Cost: ${selected_robot.get('monthly_lease', 0):,.0f}
 """
 
         return f"""You are Autopilot, a premium robotics procurement consultant.
@@ -1152,7 +1156,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             robot_info = f"""
 SELECTED ROBOT:
 - Name: {selected_robot.get('name', 'Unknown')}
-- Monthly Lease: ${selected_robot.get('monthly_lease', 0):,.0f}
+- Monthly Cost: ${selected_robot.get('monthly_lease', 0):,.0f}
 """
 
         return f"""You are Autopilot, a premium robotics procurement consultant.
@@ -1164,7 +1168,7 @@ COMPANY: {company_name or 'Unknown'}
 CONTEXT: The user is moving to the Greenlight phase where they will:
 - Set a target deployment start date
 - Invite team members to the project
-- Finalize and purchase their robot lease
+- Finalize and complete their robot purchase
 
 INSTRUCTIONS:
 1. Generate an encouraging closing message

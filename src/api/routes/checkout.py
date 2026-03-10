@@ -79,6 +79,7 @@ async def create_checkout_session(
             session_id=session_id,
             customer_email=data.customer_email,
             is_test_account=is_test_account,
+            payment_type=data.payment_type,
         )
 
         return CheckoutSessionResponse(

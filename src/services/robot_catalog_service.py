@@ -401,16 +401,24 @@ class RobotCatalogService:
         """
         from src.core.config import get_settings
 
-        query = (
-            self.client.table("robot_catalog")
-            .select(
-                "id, name, monthly_lease, stripe_product_id, stripe_lease_price_id, "
-                "stripe_product_id_test, stripe_lease_price_id_test, active"
+        try:
+            query = (
+                self.client.table("robot_catalog")
+                .select(
+                    "id, name, monthly_lease, purchase_price, "
+                    "stripe_product_id, stripe_lease_price_id, stripe_purchase_price_id, "
+                    "stripe_product_id_test, stripe_lease_price_id_test, stripe_purchase_price_id_test, "
+                    "active"
+                )
+                .eq("id", str(robot_id))
+                .maybe_single()
             )
-            .eq("id", str(robot_id))
-            .maybe_single()
-        )
-        response = await self._execute_sync(query)
+            response = await self._execute_sync(query)
+        except Exception as e:
+            # postgrest-py raises APIError with code 204 when maybe_single() finds no rows
+            if "204" in str(e):
+                return None
+            raise
 
         if not response.data:
             return None
@@ -426,6 +434,9 @@ class RobotCatalogService:
         if should_use_test:
             robot["stripe_product_id"] = robot.get("stripe_product_id_test") or robot.get("stripe_product_id")
             robot["stripe_lease_price_id"] = robot.get("stripe_lease_price_id_test") or robot.get("stripe_lease_price_id")
+            robot["stripe_purchase_price_id"] = robot.get("stripe_purchase_price_id_test") or robot.get("stripe_purchase_price_id")
+        else:
+            robot["stripe_purchase_price_id"] = robot.get("stripe_purchase_price_id", "")
 
         return robot
 
