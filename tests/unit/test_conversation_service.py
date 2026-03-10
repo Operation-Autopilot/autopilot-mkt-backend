@@ -1,6 +1,6 @@
 """Unit tests for ConversationService."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -97,7 +97,7 @@ class TestCanAccess:
         """Test that True is returned for conversation owner."""
         conversation = {
             "id": "770e8400-e29b-41d4-a716-446655440000",
-            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "profile_id": "550e8400-e29b-41d4-a716-446655440000",
             "company_id": None,
         }
 
@@ -121,7 +121,7 @@ class TestCanAccess:
         """Test that False is returned for non-owner without company access."""
         conversation = {
             "id": "770e8400-e29b-41d4-a716-446655440000",
-            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "profile_id": "550e8400-e29b-41d4-a716-446655440000",
             "company_id": None,
         }
 
@@ -150,7 +150,7 @@ class TestListConversations:
         conversations = [
             {
                 "id": "770e8400-e29b-41d4-a716-446655440000",
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
+                "profile_id": "550e8400-e29b-41d4-a716-446655440000",
                 "title": "Test Conversation",
                 "phase": "discovery",
                 "metadata": {},
@@ -166,17 +166,14 @@ class TestListConversations:
             mock_response
         )
 
-        # Mock for last message time
-        mock_msg_response = MagicMock()
-        mock_msg_response.data = []
-        mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = (
-            mock_msg_response
-        )
-
-        result, next_cursor, has_more = await conversation_service.list_conversations(
-            profile_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
-            limit=20,
-        )
+        # Patch batch helper to avoid second Supabase query conflicting with mock
+        with patch.object(
+            conversation_service, "_get_last_message_times_batch", return_value={}
+        ):
+            result, next_cursor, has_more = await conversation_service.list_conversations(
+                profile_id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+                limit=20,
+            )
 
         assert len(result) == 1
         assert result[0].title == "Test Conversation"

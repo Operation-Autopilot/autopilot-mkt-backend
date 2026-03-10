@@ -24,6 +24,31 @@ from src.services.session_service import SessionService
 
 logger = logging.getLogger(__name__)
 
+# Module-level TTL cache for robot catalog to avoid repeated DB fetches
+_robot_cache: tuple[float, list] | None = None
+_ROBOT_CACHE_TTL = 300  # 5 minutes
+_robot_cache_lock = asyncio.Lock()
+
+
+async def _get_cached_robot_catalog() -> list[dict[str, Any]]:
+    """Get robot catalog with in-memory TTL cache (5 min)."""
+    global _robot_cache
+    now = time.monotonic()
+    if _robot_cache is not None:
+        cached_at, cached_data = _robot_cache
+        if now - cached_at < _ROBOT_CACHE_TTL:
+            return cached_data
+    async with _robot_cache_lock:
+        # Double-check after acquiring lock (another request may have refreshed)
+        if _robot_cache is not None:
+            cached_at, cached_data = _robot_cache
+            if time.monotonic() - cached_at < _ROBOT_CACHE_TTL:
+                return cached_data
+        catalog = await RobotCatalogService().list_robots(active_only=True)
+        _robot_cache = (time.monotonic(), catalog)
+        return catalog
+
+
 
 def _sanitize_answer_value(ans: Any) -> str:
     """Sanitize an answer value for safe inclusion in prompts.
@@ -66,6 +91,7 @@ def _sanitize_answer_value(ans: Any) -> str:
 # Key: (conversation_id, phase) -> sales_knowledge_text
 _sales_knowledge_cache: dict[tuple[str, str], str] = {}
 _SALES_KNOWLEDGE_CACHE_MAX_SIZE = 1000  # Limit cache to prevent memory bloat
+_sales_knowledge_cache_lock = asyncio.Lock()
 
 
 def _detect_question_from_chips(chips: list[str] | None) -> str | None:
@@ -96,6 +122,39 @@ def _detect_question_from_chips(chips: list[str] | None) -> str | None:
             if len(q_chips & provided_chips) >= len(q_chips) * 0.8:
                 return q["key"]
 
+    return None
+
+
+# Keywords in assistant messages that indicate which question was asked.
+# Used as fallback when chips are absent (e.g. free-text questions like company_name).
+_QUESTION_CONTENT_PATTERNS: dict[str, list[str]] = {
+    "company_name": ["company name", "name of your company", "name of your business", "who are you", "what company"],
+    "company_type": ["type of company", "type of facility", "kind of facility", "what type of", "what kind of"],
+    "courts_count": ["how many courts", "how many indoor", "how many areas", "facility size", "how big"],
+    "method": ["cleaning method", "how do you clean", "primary cleaning"],
+    "frequency": ["how often", "how frequently", "cleaning frequency", "times per week"],
+    "duration": ["how long does", "cleaning session take", "hours per session", "duration"],
+    "monthly_spend": ["monthly spend", "cleaning budget", "monthly cleaning", "spend on cleaning"],
+}
+
+
+def _detect_question_from_content(content: str) -> str | None:
+    """Detect which question was asked by matching assistant message content.
+
+    Fallback for chip-based detection — handles free-text questions like company_name.
+
+    Args:
+        content: The assistant message text.
+
+    Returns:
+        The question key if detected, None otherwise.
+    """
+    if not content:
+        return None
+    content_lower = content.lower()
+    for key, patterns in _QUESTION_CONTENT_PATTERNS.items():
+        if any(p in content_lower for p in patterns):
+            return key
     return None
 
 
@@ -137,7 +196,9 @@ Guidelines:
 - Keep responses to 2-3 sentences max - be direct and concise
 - Summarize what you've learned periodically
 - When you have a good understanding, suggest moving to ROI analysis
-- Stay focused on understanding their needs before recommending solutions""",
+- Stay focused on understanding their needs before recommending solutions
+- Keep responses concise — 2-3 short sentences max. Use bullet points for lists.
+- NEVER assume the user's industry, facility type, or business details. Only reference information explicitly shared.""",
     ConversationPhase.ROI: """You are Autopilot, an expert robotics procurement consultant helping companies analyze ROI for automation.
 
 Your role in the ROI phase:
@@ -237,7 +298,7 @@ class AgentService:
             self._sales_knowledge_service = get_sales_knowledge_service()
         return self._sales_knowledge_service
 
-    def _get_cached_sales_knowledge(
+    async def _get_cached_sales_knowledge(
         self, conversation_id: UUID, phase: ConversationPhase
     ) -> str:
         """Get sales knowledge for a conversation, caching per conversation+phase.
@@ -277,15 +338,15 @@ class AgentService:
             sales_knowledge = ""
 
         # Evict oldest entries if cache is full (simple FIFO eviction)
-        if len(_sales_knowledge_cache) >= _SALES_KNOWLEDGE_CACHE_MAX_SIZE:
-            # Remove first 100 entries to make room
-            keys_to_remove = list(_sales_knowledge_cache.keys())[:100]
-            for key in keys_to_remove:
-                del _sales_knowledge_cache[key]
-            logger.debug("Evicted %d entries from sales knowledge cache", len(keys_to_remove))
+        # Use lock to prevent race condition during concurrent eviction
+        async with _sales_knowledge_cache_lock:
+            if len(_sales_knowledge_cache) >= _SALES_KNOWLEDGE_CACHE_MAX_SIZE:
+                keys_to_remove = list(_sales_knowledge_cache.keys())[:100]
+                for key in keys_to_remove:
+                    del _sales_knowledge_cache[key]
+                logger.debug("Evicted %d entries from sales knowledge cache", len(keys_to_remove))
+            _sales_knowledge_cache[cache_key] = sales_knowledge
 
-        # Cache the result
-        _sales_knowledge_cache[cache_key] = sales_knowledge
         logger.debug("Cached sales knowledge for %s/%s", conversation_id, phase.value)
 
         return sales_knowledge
@@ -356,7 +417,7 @@ class AgentService:
             ConversationPhase.GREENLIGHT,
             ConversationPhase.ROI,
         ):
-            product_context = await self.rag_service.get_relevant_products_for_context(
+            product_context = await self.rag_service.get_relevant_robots_for_context(
                 query=current_message,
                 top_k=5,
             )
@@ -365,7 +426,7 @@ class AgentService:
 
         # Add phase-specific sales knowledge from real customer conversations
         # Uses caching to reduce token usage (~400-600 tokens saved per message)
-        sales_knowledge = self._get_cached_sales_knowledge(conversation_id, phase)
+        sales_knowledge = await self._get_cached_sales_knowledge(conversation_id, phase)
         if sales_knowledge:
             system_prompt += f"\n\n{sales_knowledge}"
 
@@ -468,10 +529,10 @@ class AgentService:
 
             try:
                 # Call OpenAI API
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=context,  # type: ignore[arg-type]
-                    max_completion_tokens=1000,
+                    max_completion_tokens=400,
                     temperature=0.7,
                 )
 
@@ -581,6 +642,23 @@ class AgentService:
         else:
             answered_summary = "None yet - this is a new conversation."
 
+        # IDEA-04: Hint company type if company name contains keywords
+        company_type_hint = ""
+        if "company_name" in current_answers and "company_type" not in current_answers:
+            name_val = _sanitize_answer_value(current_answers["company_name"]).lower()
+            type_hints = {
+                "pickleball": "Pickleball Club",
+                "tennis": "Tennis Club",
+                "warehouse": "Warehouse",
+                "restaurant": "Restaurant",
+                "datacenter": "Datacenter",
+                "data center": "Datacenter",
+            }
+            for keyword, suggested_type in type_hints.items():
+                if keyword in name_val:
+                    company_type_hint = f"\nHINT: The company name suggests this may be a {suggested_type}. When asking about company type, you can suggest this as a likely match."
+                    break
+
         # Filter out the last asked question from missing questions to prevent re-asking
         if last_question_asked:
             missing_questions = [q for q in missing_questions if q["key"] != last_question_asked]
@@ -638,7 +716,7 @@ AVAILABLE ROBOT CATALOG (ONLY recommend from this list):
 {catalog_summary}
 
 WHAT YOU KNOW ABOUT THIS CUSTOMER (from previous messages):
-{answered_summary}
+{answered_summary}{company_type_hint}
 {current_message_context}{last_question_context}
 STILL NEED TO LEARN ({remaining_count} remaining):
 {missing_summary}
@@ -653,6 +731,9 @@ INSTRUCTIONS:
 7. When discussing specific robots, ONLY mention robots from the AVAILABLE ROBOT CATALOG above
 8. NEVER make up or hallucinate robot models - if asked about specific models, only reference the catalog
 9. If recommendations are available, reference them when discussing robot options
+10. NEVER assume facts the user hasn't shared. If information is missing from "WHAT YOU KNOW", do not reference or guess it.
+If the user says "I'm not sure" or "I don't know", acknowledge their uncertainty warmly, provide helpful context to guide them, and rephrase or simplify the question.
+11. Keep your response concise — 2-3 short sentences plus any question. Never exceed 100 words.
 
 TONE: Premium, consultative, efficient. Like a senior consultant who values the client's time.
 Keep responses to 2-3 sentences max. Be concise - don't over-explain or repeat what the user told you.
@@ -746,14 +827,14 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         else:
             try:
                 # Use fast model for greetings to reduce latency (3-5s -> ~1s)
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model_fast,
                     messages=[
                         {"role": "system", "content": greeting_prompt},
                         {"role": "user", "content": "Generate initial greeting"},
                     ],
                     response_format=DISCOVERY_RESPONSE_SCHEMA,
-                    max_completion_tokens=300,
+                    max_completion_tokens=150,
                     temperature=0.7,
                 )
                 result = json.loads(response.choices[0].message.content or "{}")
@@ -869,6 +950,7 @@ WHAT YOU KNOW ABOUT THIS USER:
 {source_info}
 {next_question_guidance}
 INSTRUCTIONS:
+0. NEVER assume the user's industry, facility type, or business purpose. Only reference information the user has explicitly stated.
 1. Generate a warm, professional greeting
 2. If you know the company name, acknowledge it naturally (don't ask again)
 3. If you know other details (company type, facility info), reference them briefly
@@ -958,7 +1040,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             result = {"content": content, "chips": default_chips}
         else:
             try:
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=[
                         {"role": "system", "content": prompt},
@@ -1138,12 +1220,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         from src.services.discovery_profile_service import DiscoveryProfileService
         from src.services.company_service import CompanyService
 
-        robot_catalog_service = RobotCatalogService()
         discovery_service = None
         current_answers: dict[str, Any] = {}
 
         async def fetch_robot_catalog() -> list[dict[str, Any]]:
-            return await robot_catalog_service.list_robots(active_only=True)
+            return await _get_cached_robot_catalog()
 
         async def fetch_user_context() -> tuple[dict[str, Any], Any, dict | None]:
             """Fetch user context (answers, discovery_service, company)."""
@@ -1259,16 +1340,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                 )
                 logger.debug("Fetched fresh recommendations for discovery context")
 
-                # Cache recommendations for authenticated users (fire and forget)
-                if profile_id and discovery_service and recommendations:
-                    try:
-                        await discovery_service.set_cached_recommendations(
-                            profile_id,
-                            current_answers,
-                            recommendations.model_dump(mode="json"),
-                        )
-                    except Exception as cache_err:
-                        logger.warning("Failed to cache recommendations: %s", cache_err)
+                # NOTE: Do NOT cache mid-discovery recommendations here.
+                # The ROI page should always generate fresh recommendations
+                # based on the final complete answer set, not a partial one
+                # from mid-discovery. Caching partial results caused the #1
+                # recommendation to differ between chat and ROI page.
 
                 return recommendations
             except Exception as e:
@@ -1311,8 +1387,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                     if not last_question_asked:
                         last_chips = msg_metadata.get("chips", [])
                         last_question_asked = _detect_question_from_chips(last_chips)
-                    if last_question_asked:
-                        logger.debug("Last question asked: %s", last_question_asked)
+                # Fall back to content-based detection for chipless questions (e.g. company_name)
+                if not last_question_asked:
+                    last_question_asked = _detect_question_from_content(msg.get("content", ""))
+                if last_question_asked:
+                    logger.debug("Last question asked: %s", last_question_asked)
                 break
 
         # Build discovery-specific prompt with robot catalog, recommendations, and current message
@@ -1364,11 +1443,11 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                     )
 
             try:
-                response = self.client.chat.create(
+                response = await self.client.chat.create(
                     model=self.settings.openai_model,
                     messages=messages,  # type: ignore[arg-type]
                     response_format=DISCOVERY_RESPONSE_SCHEMA,
-                    max_completion_tokens=500,
+                    max_completion_tokens=250,
                     temperature=0.7,
                 )
 
@@ -1409,6 +1488,8 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
 
         # Detect which question is being asked in this response (for tracking)
         question_asked = _detect_question_from_chips(result.get("chips"))
+        if not question_asked:
+            question_asked = _detect_question_from_content(result.get("content", ""))
 
         # Store agent response with chips in metadata
         agent_msg_data = await self.conversation_service.add_message(
@@ -1438,4 +1519,6 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             "ready_for_roi": result["ready_for_roi"],
             "user_message": user_msg_response,
             "agent_message": agent_msg_response,
+            "answered_keys": list(answered_keys),
+            "missing_keys": [q["key"] for q in missing_questions],
         }

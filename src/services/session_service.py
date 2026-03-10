@@ -1,5 +1,8 @@
 """Session business logic service."""
 
+import asyncio
+import hashlib
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -10,6 +13,8 @@ from src.schemas.session import SessionUpdate
 
 if TYPE_CHECKING:
     from src.services.checkout_service import CheckoutService
+
+logger = logging.getLogger(__name__)
 
 
 class SessionService:
@@ -26,6 +31,10 @@ class SessionService:
         self.client = get_supabase_client()
         self._checkout_service = checkout_service
 
+    async def _execute_sync(self, query):
+        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
+        return await asyncio.to_thread(query.execute)
+
     def _generate_token(self) -> str:
         """Generate a cryptographically secure session token.
 
@@ -34,6 +43,18 @@ class SessionService:
         """
         return secrets.token_hex(self.TOKEN_LENGTH // 2)
 
+    @staticmethod
+    def _hash_token(token: str) -> str:
+        """Hash a session token using SHA-256 for secure storage.
+
+        Args:
+            token: The raw session token.
+
+        Returns:
+            str: The hex-encoded SHA-256 hash of the token.
+        """
+        return hashlib.sha256(token.encode()).hexdigest()
+
     async def create_session(self) -> tuple[dict[str, Any], str]:
         """Create a new session with a unique token.
 
@@ -41,9 +62,10 @@ class SessionService:
             tuple: (session_data, session_token)
         """
         token = self._generate_token()
+        token_hash = self._hash_token(token)
 
         session_data = {
-            "session_token": token,
+            "session_token": token_hash,  # store hash, not raw token
             "current_question_index": 0,
             "phase": "discovery",
             "answers": {},
@@ -51,32 +73,50 @@ class SessionService:
             "metadata": {},
         }
 
-        response = (
+        query = (
             self.client.table("sessions")
             .insert(session_data)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
-        return response.data[0], token
+        if not response.data:
+            raise ValueError("Database operation returned no data")
+        return response.data[0], token  # return raw token to caller
 
     async def get_session_by_token(self, token: str) -> dict[str, Any] | None:
         """Get a session by its token.
+
+        Returns None if session not found or expired.
 
         Args:
             token: The session token from cookie.
 
         Returns:
-            dict | None: The session data or None if not found.
+            dict | None: The session data or None if not found/expired.
         """
-        response = (
+        token_hash = self._hash_token(token)
+        query = (
             self.client.table("sessions")
             .select("*")
-            .eq("session_token", token)
+            .eq("session_token", token_hash)
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
-        return response.data if response and response.data else None
+        if not response or not response.data:
+            return None
+
+        session = response.data
+
+        # Check if session is expired
+        expires_at = session.get("expires_at")
+        if expires_at:
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expires_at < datetime.now(timezone.utc):
+                return None
+
+        return session
 
     async def get_session_by_id(self, session_id: UUID) -> dict[str, Any] | None:
         """Get a session by its ID.
@@ -87,13 +127,13 @@ class SessionService:
         Returns:
             dict | None: The session data or None if not found.
         """
-        response = (
+        query = (
             self.client.table("sessions")
             .select("*")
             .eq("id", str(session_id))
             .maybe_single()
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data if response and response.data else None
 
@@ -146,12 +186,12 @@ class SessionService:
             # No changes, return current session
             return await self.get_session_by_id(session_id)
 
-        response = (
+        query = (
             self.client.table("sessions")
             .update(update_data)
             .eq("id", str(session_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
 
@@ -198,12 +238,12 @@ class SessionService:
         Returns:
             dict | None: The updated session data or None if not found.
         """
-        response = (
+        query = (
             self.client.table("sessions")
             .update({"conversation_id": str(conversation_id)})
             .eq("id", str(session_id))
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
 
@@ -256,11 +296,15 @@ class SessionService:
         conversation_transferred = False
         conversation_id = session.get("conversation_id")
         if conversation_id:
-            await self._transfer_conversation_ownership(
-                conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
-                profile_id=profile_id,
-            )
-            conversation_transferred = True
+            try:
+                await self._transfer_conversation_ownership(
+                    conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
+                    profile_id=profile_id,
+                )
+                conversation_transferred = True
+            except Exception as e:
+                logger.warning("Failed to transfer conversation %s: %s", conversation_id, e)
+                conversation_transferred = False
 
         # Transfer orders to the profile if checkout service is available
         orders_transferred = 0
@@ -271,9 +315,10 @@ class SessionService:
             )
 
         # Mark session as claimed
-        self.client.table("sessions").update(
+        query = self.client.table("sessions").update(
             {"claimed_by_profile_id": str(profile_id)}
-        ).eq("id", str(session_id)).execute()
+        ).eq("id", str(session_id))
+        await self._execute_sync(query)
 
         return {
             "discovery_profile": discovery_profile,
@@ -299,12 +344,12 @@ class SessionService:
             dict: The created or updated discovery profile.
         """
         # Check if discovery profile exists
-        existing = (
+        query = (
             self.client.table("discovery_profiles")
             .select("*")
             .eq("profile_id", str(profile_id))
-            .execute()
         )
+        existing = await self._execute_sync(query)
 
         if existing.data:
             # Smart merge: only update empty/default fields, preserve existing progress
@@ -323,13 +368,13 @@ class SessionService:
             if existing_phase == "discovery" and session_phase in ["roi", "greenlight"]:
                 merged_data["phase"] = session_phase
 
-            # answers: merge dicts, only add new keys (don't overwrite existing answers)
+            # answers: merge dicts, session answers take precedence over existing
             existing_answers = existing_profile.get("answers", {}) or {}
             session_answers = session.get("answers", {}) or {}
             if session_answers:
-                new_answers = {k: v for k, v in session_answers.items() if k not in existing_answers}
-                if new_answers:
-                    merged_data["answers"] = {**existing_answers, **new_answers}
+                merged_answers = {**existing_answers, **session_answers}
+                if merged_answers != existing_answers:
+                    merged_data["answers"] = merged_answers
 
             # roi_inputs: only update if existing is None/empty
             if not existing_profile.get("roi_inputs") and session.get("roi_inputs"):
@@ -351,13 +396,15 @@ class SessionService:
 
             # Only update if there's something to merge
             if merged_data:
-                response = (
+                query = (
                     self.client.table("discovery_profiles")
                     .update(merged_data)
                     .eq("profile_id", str(profile_id))
-                    .execute()
                 )
-                return response.data[0]
+                response = await self._execute_sync(query)
+                if response.data and len(response.data) > 0:
+                    return response.data[0]
+                return existing_profile
             else:
                 # Nothing to merge, return existing profile as-is
                 return existing_profile
@@ -373,12 +420,14 @@ class SessionService:
                 "timeframe": session.get("timeframe"),
                 "greenlight": session.get("greenlight"),
             }
-            response = (
+            query = (
                 self.client.table("discovery_profiles")
                 .insert(profile_data)
-                .execute()
             )
-            return response.data[0]
+            response = await self._execute_sync(query)
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            raise ValueError("Failed to create discovery profile")
 
     async def _transfer_conversation_ownership(
         self,
@@ -392,9 +441,10 @@ class SessionService:
             profile_id: The profile UUID to transfer to.
         """
         # Update conversation to be owned by the profile instead of session
-        self.client.table("conversations").update(
+        query = self.client.table("conversations").update(
             {"profile_id": str(profile_id), "session_id": None}
-        ).eq("id", str(conversation_id)).execute()
+        ).eq("id", str(conversation_id))
+        await self._execute_sync(query)
 
     async def cleanup_expired_sessions(self) -> int:
         """Delete expired sessions to prevent table bloat.
@@ -407,11 +457,11 @@ class SessionService:
         now = datetime.now(timezone.utc).isoformat()
 
         # Delete expired sessions and get the count
-        response = (
+        query = (
             self.client.table("sessions")
             .delete()
             .lt("expires_at", now)
-            .execute()
         )
+        response = await self._execute_sync(query)
 
         return len(response.data) if response.data else 0

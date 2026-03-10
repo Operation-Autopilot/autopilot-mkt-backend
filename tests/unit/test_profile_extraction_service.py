@@ -40,7 +40,7 @@ class TestExtractAndUpdate:
     async def test_extracts_facility_size_from_conversation(self, mock_openai_response):
         """Test extraction of facility size from user message."""
         mock_openai = MagicMock()
-        mock_openai.chat.create.return_value = mock_openai_response
+        mock_openai.chat.create = AsyncMock(return_value=mock_openai_response)
 
         mock_conv_service = MagicMock()
         mock_conv_service.get_recent_messages = AsyncMock(return_value=[
@@ -105,7 +105,7 @@ class TestExtractAndUpdate:
     async def test_merges_with_existing_answers(self, mock_openai_response):
         """Test that new extractions merge with existing answers."""
         mock_openai = MagicMock()
-        mock_openai.chat.create.return_value = mock_openai_response
+        mock_openai.chat.create = AsyncMock(return_value=mock_openai_response)
 
         mock_conv_service = MagicMock()
         mock_conv_service.get_recent_messages = AsyncMock(return_value=[
@@ -147,7 +147,7 @@ class TestExtractAndUpdate:
     async def test_handles_extraction_failure_gracefully(self):
         """Test that extraction failures don't raise exceptions."""
         mock_openai = MagicMock()
-        mock_openai.chat.create.side_effect = Exception("API Error")
+        mock_openai.chat.create = AsyncMock(side_effect=Exception("API Error"))
 
         mock_conv_service = MagicMock()
         mock_conv_service.get_recent_messages = AsyncMock(return_value=[
@@ -197,7 +197,7 @@ class TestValidateAndEnrichAnswers:
             }
             result = service._validate_and_enrich_answers(answers)
 
-            assert result["sqft"]["questionId"] == 7
+            assert result["sqft"]["questionId"] == 8
             assert result["sqft"]["label"] == "Total Sq Ft"
             assert result["sqft"]["group"] == "Facility"
 
@@ -242,7 +242,7 @@ class TestROIInputsExtraction:
         })
 
         mock_openai = MagicMock()
-        mock_openai.chat.create.return_value = mock_response
+        mock_openai.chat.create = AsyncMock(return_value=mock_response)
 
         mock_conv_service = MagicMock()
         mock_conv_service.get_recent_messages = AsyncMock(return_value=[

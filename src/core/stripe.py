@@ -54,5 +54,9 @@ def get_stripe_api_key(use_test_mode: bool | None = None) -> str:
     if use_test_mode is None:
         use_test_mode = settings.is_stripe_test_mode
     if use_test_mode and settings.stripe_secret_key_test:
-        return settings.stripe_secret_key_test
-    return settings.stripe_secret_key
+        api_key = settings.stripe_secret_key_test
+    else:
+        api_key = settings.stripe_secret_key
+    if not api_key:
+        raise ValueError("Stripe API key not configured. Set STRIPE_SECRET_KEY in environment.")
+    return api_key

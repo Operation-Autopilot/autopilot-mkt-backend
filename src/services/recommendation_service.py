@@ -1,4 +1,9 @@
-"""Intelligent robot recommendation service using LLM and semantic search."""
+"""Intelligent robot recommendation service using deterministic scoring + semantic search.
+
+Scoring is fully deterministic (rule-based + semantic similarity boost).
+LLM is only used optionally to generate natural language summaries for
+the top recommendations — never for scoring or ranking.
+"""
 
 import json
 import logging
@@ -23,34 +28,74 @@ from src.schemas.roi import (
 from src.services.rag_service import RAGService, get_rag_service
 from src.services.recommendation_cache import get_recommendation_cache
 from src.services.recommendation_prompts import (
-    LLM_SCORING_SCHEMA,
-    SCORING_SYSTEM_PROMPT,
-    SCORING_USER_PROMPT_TEMPLATE,
     format_discovery_context,
-    format_robots_context,
 )
 from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
 
-# Algorithm version for LLM-powered recommendations
-LLM_ALGORITHM_VERSION = "2.0.0"
+# Algorithm version — 3.0 = deterministic scoring + semantic boost + optional LLM summaries
+ALGORITHM_VERSION = "3.0.0"
+
+# LLM prompt for generating summaries only (no scoring, no IDs)
+SUMMARY_SYSTEM_PROMPT = """You are an expert robotics procurement consultant. Given a customer profile and a ranked list of cleaning robots, write a short personalized summary for each robot explaining why it's a good fit for THIS customer.
+
+GUIDELINES:
+- Each summary should be 1-2 sentences
+- Be specific about WHY features matter for this customer's situation
+- Reference the customer's facility type, cleaning needs, or budget when relevant
+- Do NOT include scores, rankings, or robot IDs"""
+
+SUMMARY_USER_PROMPT_TEMPLATE = """CUSTOMER PROFILE:
+{discovery_context}
+
+ROBOTS (ranked by match score, best first):
+{robots_summary_context}
+
+Write a personalized summary for each robot. Return a JSON object."""
+
+SUMMARY_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "robot_summaries",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "summaries": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "robot_name": {
+                                "type": "string",
+                                "description": "Name of the robot",
+                            },
+                            "summary": {
+                                "type": "string",
+                                "description": "1-2 sentence personalized summary",
+                            },
+                        },
+                        "required": ["robot_name", "summary"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["summaries"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+}
 
 
 class RecommendationService:
-    """Service for intelligent robot recommendations using LLM and RAG."""
+    """Service for robot recommendations using deterministic scoring + semantic search."""
 
     def __init__(
         self,
         rag_service: RAGService | None = None,
         robot_catalog_service: RobotCatalogService | None = None,
     ) -> None:
-        """Initialize recommendation service.
-
-        Args:
-            rag_service: Optional RAG service for testing.
-            robot_catalog_service: Optional robot catalog service for testing.
-        """
         self._rag_service = rag_service
         self._robot_catalog_service = robot_catalog_service
         self.settings = get_settings()
@@ -58,14 +103,12 @@ class RecommendationService:
 
     @property
     def rag_service(self) -> RAGService:
-        """Get RAG service."""
         if self._rag_service is None:
             self._rag_service = get_rag_service()
         return self._rag_service
 
     @property
     def robot_catalog(self) -> RobotCatalogService:
-        """Get robot catalog service."""
         if self._robot_catalog_service is None:
             self._robot_catalog_service = RobotCatalogService()
         return self._robot_catalog_service
@@ -77,7 +120,14 @@ class RecommendationService:
         profile_id: UUID | None = None,
         use_cache: bool = True,
     ) -> RecommendationsResponse:
-        """Get intelligent robot recommendations using LLM scoring.
+        """Get robot recommendations using deterministic scoring + semantic boost.
+
+        Pipeline:
+        1. Build discovery context from answers
+        2. Get semantic candidates via RAG (embedding search)
+        3. Score candidates deterministically (rule-based + semantic boost)
+        4. Optionally generate LLM summaries for top-K (non-blocking)
+        5. Build response with ROI calculations
 
         Args:
             request: Recommendations request with answers.
@@ -87,9 +137,6 @@ class RecommendationService:
 
         Returns:
             RecommendationsResponse with ranked recommendations.
-
-        Raises:
-            TokenBudgetError: If daily token budget is exceeded (will fallback).
         """
         # Check cache first
         if use_cache:
@@ -100,10 +147,10 @@ class RecommendationService:
                 return cached
 
         try:
-            # Build natural language context from discovery answers
+            # Step 1: Build natural language context from discovery answers
             discovery_context = format_discovery_context(request.answers)
 
-            # Get semantic candidates using RAG
+            # Step 2: Get semantic candidates using RAG
             candidates = await self._get_semantic_candidates(
                 discovery_context,
                 max_candidates=self.settings.llm_scoring_max_candidates,
@@ -113,24 +160,24 @@ class RecommendationService:
                 logger.warning("No semantic candidates found, falling back to manual")
                 return await self._fallback_to_manual(request)
 
-            # Score candidates with LLM
-            scored_robots = await self._score_with_llm(
+            # Step 3: Score candidates deterministically
+            scored = self._score_candidates_deterministic(candidates, request.answers)
+
+            if not scored:
+                logger.warning("No scored candidates, falling back to manual")
+                return await self._fallback_to_manual(request)
+
+            # Step 4: Optionally enrich top-K with LLM summaries
+            scored = await self._enrich_with_llm_summaries(
+                scored_candidates=scored,
                 discovery_context=discovery_context,
-                candidates=candidates,
+                top_k=request.top_k,
                 session_id=session_id,
                 profile_id=profile_id,
             )
 
-            if not scored_robots:
-                logger.warning("LLM scoring returned no results, falling back to manual")
-                return await self._fallback_to_manual(request)
-
-            # Build response
-            response = await self._build_recommendations_response(
-                scored_robots=scored_robots,
-                candidates=candidates,
-                request=request,
-            )
+            # Step 5: Build response with ROI
+            response = self._build_response(scored, candidates, request)
 
             # Cache the response
             if use_cache:
@@ -138,14 +185,8 @@ class RecommendationService:
 
             return response
 
-        except TokenBudgetError:
-            logger.warning("Token budget exceeded, falling back to manual scoring")
-            raise  # Let the caller decide whether to fallback
-        except OpenAIError as e:
-            logger.error("OpenAI error in recommendations: %s", str(e))
-            return await self._fallback_to_manual(request)
         except Exception as e:
-            logger.error("Unexpected error in recommendations: %s", str(e))
+            logger.error("Error in recommendations: %s", str(e))
             return await self._fallback_to_manual(request)
 
     async def _get_semantic_candidates(
@@ -160,26 +201,31 @@ class RecommendationService:
             max_candidates: Maximum candidates to return.
 
         Returns:
-            List of robot dictionaries with full data.
+            List of robot dictionaries with semantic scores attached.
         """
         try:
-            # Search using RAG
             search_results = await self.rag_service.search_robots_for_discovery(
                 discovery_context=discovery_context,
                 top_k=max_candidates,
             )
 
             if not search_results:
-                # Fallback to all cleaning robots if RAG fails
                 logger.warning("RAG search returned no results, using all robots")
                 robots = await self.robot_catalog.list_robots(active_only=True)
                 return robots[:max_candidates]
 
             # Get full robot data for the candidates
-            robot_ids = [UUID(r["robot_id"]) for r in search_results if r.get("robot_id")]
+            robot_ids = []
+            for r in search_results:
+                rid = r.get("robot_id")
+                if rid:
+                    try:
+                        robot_ids.append(UUID(rid))
+                    except (ValueError, AttributeError):
+                        logger.warning("Skipping invalid robot_id: %s", rid)
             robots = await self.robot_catalog.get_robots_by_ids(robot_ids)
 
-            # Add semantic scores to robot data
+            # Attach semantic scores
             score_map = {r["robot_id"]: r["semantic_score"] for r in search_results}
             for robot in robots:
                 robot["_semantic_score"] = score_map.get(str(robot.get("id")), 0.5)
@@ -188,33 +234,144 @@ class RecommendationService:
 
         except Exception as e:
             logger.error("Error getting semantic candidates: %s", str(e))
-            # Fallback to direct catalog query
             robots = await self.robot_catalog.list_robots(active_only=True)
             return robots[:max_candidates]
 
-    async def _score_with_llm(
+    def _score_candidates_deterministic(
         self,
-        discovery_context: str,
         candidates: list[dict[str, Any]],
+        answers: dict[str, DiscoveryAnswer],
+    ) -> list[dict[str, Any]]:
+        """Score and rank candidates using rule-based matching + semantic boost.
+
+        No LLM involved. UUIDs never leave Python.
+
+        Args:
+            candidates: Robot candidates with _semantic_score attached.
+            answers: Discovery answers.
+
+        Returns:
+            List of dicts with robot_id, match_score, label, reasons, summary,
+            sorted by match_score descending.
+        """
+        from src.services.roi_service import ROIService
+
+        roi_service = ROIService(robot_catalog_service=self.robot_catalog)
+
+        scored: list[dict[str, Any]] = []
+        for robot in candidates:
+            # Get base rule-based score and reasons
+            base_score, reasons = roi_service._score_robot_manual(robot, answers)
+
+            # Apply semantic similarity boost (up to 15 points)
+            semantic_score = float(robot.get("_semantic_score", 0.5))
+            semantic_boost = semantic_score * 15.0  # 0-15 points
+            reasons.append(
+                RecommendationReason(
+                    factor="Semantic Relevance",
+                    explanation="AI-matched based on your specific requirements",
+                    score_impact=round(semantic_boost, 1),
+                )
+            )
+
+            total_score = min(100.0, base_score + semantic_boost)
+
+            # Generate template summary (will be overwritten by LLM if available)
+            robot_name = robot.get("name", "This robot")
+            company_type_answer = answers.get("company_type")
+            if company_type_answer and isinstance(company_type_answer, dict):
+                company_type = str(company_type_answer.get("value", "your facility"))
+            else:
+                company_type = "your facility"
+
+            if reasons:
+                top_reason = max(reasons, key=lambda r: r.score_impact)
+                summary = f"{robot_name} excels at {top_reason.factor.lower()} for {company_type}."
+            else:
+                summary = f"{robot_name} is a solid choice for {company_type}."
+
+            scored.append({
+                "robot_id": str(robot.get("id")),
+                "_robot_name": robot.get("name", "Unknown"),
+                "match_score": round(total_score, 1),
+                "reasons": reasons,
+                "summary": summary,
+            })
+
+        # Sort by score descending
+        scored.sort(key=lambda x: x["match_score"], reverse=True)
+
+        # Assign labels based on rank and attributes
+        candidate_map = {str(r.get("id")): r for r in candidates}
+        for i, s in enumerate(scored):
+            robot = candidate_map.get(s["robot_id"])
+            if robot:
+                s["label"] = self._assign_label(i + 1, s["match_score"], robot)
+            else:
+                s["label"] = "ALTERNATIVE"
+
+        return scored
+
+    @staticmethod
+    def _assign_label(
+        rank: int, score: float, robot: dict[str, Any]
+    ) -> str:
+        """Assign a display label based on rank and robot attributes."""
+        if rank == 1:
+            return "RECOMMENDED"
+        monthly_lease = float(robot.get("monthly_lease", 0))
+        if rank == 2 and monthly_lease < 1000 and score >= 60:
+            return "BEST VALUE"
+        if monthly_lease >= 1200 and score >= 70:
+            return "UPGRADE"
+        return "ALTERNATIVE"
+
+    async def _enrich_with_llm_summaries(
+        self,
+        scored_candidates: list[dict[str, Any]],
+        discovery_context: str,
+        top_k: int = 3,
         session_id: UUID | None = None,
         profile_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
-        """Score robot candidates using LLM.
+        """Optionally enrich top-K recommendations with LLM-generated summaries.
+
+        If LLM fails, the template summaries from deterministic scoring are kept.
+        No UUIDs or IDs are sent to the LLM — only robot names.
 
         Args:
-            discovery_context: Formatted discovery context.
-            candidates: List of robot candidates.
-            session_id: Optional session ID for budget tracking.
-            profile_id: Optional profile ID for budget tracking.
+            scored_candidates: Deterministically scored candidates.
+            discovery_context: Customer profile context.
+            top_k: Number of top robots to generate summaries for.
+            session_id: For token budget tracking.
+            profile_id: For token budget tracking.
 
         Returns:
-            List of scored robots with match_score, label, summary, reasons.
+            Same list with potentially updated summaries for top-K.
         """
-        # Build the prompt
-        robots_context = format_robots_context(candidates)
-        user_prompt = SCORING_USER_PROMPT_TEMPLATE.format(
+        if not self.settings.use_llm_recommendations:
+            return scored_candidates
+
+        top_robots = scored_candidates[:top_k]
+        if not top_robots:
+            return scored_candidates
+
+        # Build summary context using names only (no IDs)
+        robots_lines = []
+        for i, s in enumerate(top_robots, 1):
+            name = s.get("_robot_name", "Robot")
+            reasons = s.get("reasons", [])
+            reasons_text = ", ".join(
+                r.factor if isinstance(r, RecommendationReason) else r.get("factor", "")
+                for r in reasons
+            )
+            robots_lines.append(f"{i}. {name} — Strengths: {reasons_text}")
+
+        robots_summary = "\n".join(robots_lines)
+
+        user_prompt = SUMMARY_USER_PROMPT_TEMPLATE.format(
             discovery_context=discovery_context,
-            robots_context=robots_context,
+            robots_summary_context=robots_summary,
         )
 
         # Check token budget
@@ -227,91 +384,85 @@ class RecommendationService:
             budget_key = f"session:{session_id}"
 
         if budget_key:
-            token_budget = get_token_budget()
-            estimated_tokens = len(user_prompt) // 4 + 800  # Estimate
-            allowed, remaining, limit = await token_budget.check_budget(
-                budget_key, estimated_tokens, is_authenticated
-            )
-            if not allowed:
-                raise TokenBudgetError(
-                    message="Daily token budget exceeded for recommendations.",
-                    tokens_used=limit - remaining,
-                    daily_limit=limit,
+            try:
+                token_budget = get_token_budget()
+                estimated_tokens = len(user_prompt) // 4 + 400
+                allowed, remaining, limit = await token_budget.check_budget(
+                    budget_key, estimated_tokens, is_authenticated
                 )
+                if not allowed:
+                    logger.info("Token budget exceeded for summaries, using templates")
+                    return scored_candidates
+            except Exception:
+                pass  # Budget check failure shouldn't block recommendations
 
-        # Call LLM
         try:
-            response = self.client.chat.create(
-                model=self.settings.openai_model,
+            response = await self.client.chat.create(
+                model=self.settings.openai_model_scoring,
                 messages=[
-                    {"role": "system", "content": SCORING_SYSTEM_PROMPT},
+                    {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format=LLM_SCORING_SCHEMA,
-                max_completion_tokens=1500,
-                temperature=0.3,  # Lower temperature for more consistent scoring
+                response_format=SUMMARY_SCHEMA,
+                max_completion_tokens=600,
+                temperature=0.5,
             )
 
             # Track token usage
             if budget_key and response.usage:
+                token_budget = get_token_budget()
                 await token_budget.record_usage(budget_key, response.usage.total_tokens)
-                logger.debug(
-                    "Recommendation scoring used %d tokens",
-                    response.usage.total_tokens,
-                )
 
-            # Parse response
             result = json.loads(response.choices[0].message.content or "{}")
-            scored_robots = result.get("scored_robots", [])
+            summaries = result.get("summaries", [])
 
-            logger.info("LLM scored %d robots", len(scored_robots))
-            return scored_robots
+            # Match summaries to scored candidates by name (fuzzy)
+            summary_map = {s["robot_name"].lower(): s["summary"] for s in summaries}
+            for s in top_robots:
+                name = s.get("_robot_name", "").lower()
+                if name in summary_map:
+                    s["summary"] = summary_map[name]
+                else:
+                    # Try partial match
+                    for sname, summary in summary_map.items():
+                        if sname in name or name in sname:
+                            s["summary"] = summary
+                            break
 
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM scoring response: %s", str(e))
-            return []
+            logger.info("LLM generated summaries for %d robots", len(summaries))
 
-    async def _build_recommendations_response(
+        except (OpenAIError, json.JSONDecodeError, TokenBudgetError) as e:
+            logger.warning("LLM summary generation failed, using templates: %s", str(e))
+        except Exception as e:
+            logger.warning("Unexpected error in LLM summaries: %s", str(e))
+
+        return scored_candidates
+
+    def _build_response(
         self,
-        scored_robots: list[dict[str, Any]],
+        scored: list[dict[str, Any]],
         candidates: list[dict[str, Any]],
         request: RecommendationsRequest,
     ) -> RecommendationsResponse:
         """Build the final recommendations response.
 
-        Args:
-            scored_robots: LLM-scored robots.
-            candidates: Original robot candidate data.
-            request: Original request.
-
-        Returns:
-            RecommendationsResponse.
+        All data is deterministic — no LLM output affects ranking or structure.
         """
         from src.services.roi_service import ROIService
 
         roi_service = ROIService(robot_catalog_service=self.robot_catalog)
-
-        # Create lookup maps
         candidate_map = {str(r.get("id")): r for r in candidates}
-        score_map = {s["robot_id"]: s for s in scored_robots}
-
-        # Get ROI inputs
         inputs = request.roi_inputs or roi_service.derive_roi_inputs(request.answers)
 
-        # Sort scored robots by match_score
-        sorted_scores = sorted(scored_robots, key=lambda x: x.get("match_score", 0), reverse=True)
-
-        # Build recommendations
         recommendations: list[RobotRecommendation] = []
         other_options: list[OtherRobotOption] = []
         rank = 1
 
-        for scored in sorted_scores:
-            robot_id_str = scored.get("robot_id")
+        for s in scored:
+            robot_id_str = s["robot_id"]
             robot = candidate_map.get(robot_id_str)
-
             if not robot:
-                logger.warning("Robot ID %s from LLM not found in candidates", robot_id_str)
+                logger.warning("Robot %s not found in candidates", robot_id_str)
                 continue
 
             try:
@@ -323,58 +474,65 @@ class RecommendationService:
             # Calculate ROI
             roi = roi_service.calculate_roi(robot, inputs, answers=request.answers)
 
-            # Parse image URLs
             raw_image_url = robot.get("image_url", "")
-            image_urls = [url.strip() for url in raw_image_url.split(",") if url.strip()] if raw_image_url else []
+            image_urls = (
+                [url.strip() for url in raw_image_url.split(",") if url.strip()]
+                if raw_image_url
+                else []
+            )
 
-            # Build reasons
-            reasons = [
-                RecommendationReason(
-                    factor=r.get("factor", "Match"),
-                    explanation=r.get("explanation", ""),
-                    score_impact=r.get("score_impact", 0),
-                )
-                for r in scored.get("reasons", [])
-            ]
+            # Convert RecommendationReason objects if needed
+            reasons = s.get("reasons", [])
+            if reasons and not isinstance(reasons[0], RecommendationReason):
+                reasons = [
+                    RecommendationReason(
+                        factor=r.get("factor", "Match"),
+                        explanation=r.get("explanation", ""),
+                        score_impact=r.get("score_impact", 0),
+                    )
+                    for r in reasons
+                ]
 
             if rank <= request.top_k:
-                recommendation = RobotRecommendation(
-                    robot_id=robot_id,
-                    robot_name=robot.get("name", "Unknown"),
-                    vendor=robot.get("vendor", robot.get("manufacturer", "Unknown")),
-                    category=robot.get("category", "Cleaning Robot"),
-                    monthly_lease=float(robot.get("monthly_lease", 0)),
-                    time_efficiency=float(robot.get("time_efficiency", 0.8)),
-                    image_urls=image_urls,
-                    rank=rank,
-                    label=scored.get("label", "ALTERNATIVE"),
-                    match_score=round(scored.get("match_score", 50), 1),
-                    reasons=reasons,
-                    summary=scored.get("summary", "A suitable option for your needs."),
-                    projected_roi=roi,
-                    modes=robot.get("modes", []),
-                    surfaces=robot.get("surfaces", []),
-                    key_reasons=robot.get("key_reasons", []),
-                    specs=robot.get("specs", []),
+                recommendations.append(
+                    RobotRecommendation(
+                        robot_id=robot_id,
+                        robot_name=robot.get("name", "Unknown"),
+                        vendor=robot.get("vendor", robot.get("manufacturer", "Unknown")),
+                        category=robot.get("category", "Cleaning Robot"),
+                        monthly_lease=float(robot.get("monthly_lease", 0)),
+                        time_efficiency=float(robot.get("time_efficiency", 0.8)),
+                        image_urls=image_urls,
+                        rank=rank,
+                        label=s.get("label", "ALTERNATIVE"),
+                        match_score=s["match_score"],
+                        reasons=reasons,
+                        summary=s.get("summary", "A suitable option for your needs."),
+                        projected_roi=roi,
+                        modes=robot.get("modes", []),
+                        surfaces=robot.get("surfaces", []),
+                        key_reasons=robot.get("key_reasons", []),
+                        specs=robot.get("specs", []),
+                    )
                 )
-                recommendations.append(recommendation)
                 rank += 1
             else:
-                other_option = OtherRobotOption(
-                    robot_id=robot_id,
-                    robot_name=robot.get("name", "Unknown"),
-                    vendor=robot.get("vendor", robot.get("manufacturer", "Unknown")),
-                    category=robot.get("category", "Cleaning Robot"),
-                    monthly_lease=float(robot.get("monthly_lease", 0)),
-                    time_efficiency=float(robot.get("time_efficiency", 0.8)),
-                    image_urls=image_urls,
-                    match_score=round(scored.get("match_score", 50), 1),
-                    modes=robot.get("modes", []),
-                    surfaces=robot.get("surfaces", []),
-                    key_reasons=robot.get("key_reasons", []),
-                    specs=robot.get("specs", []),
+                other_options.append(
+                    OtherRobotOption(
+                        robot_id=robot_id,
+                        robot_name=robot.get("name", "Unknown"),
+                        vendor=robot.get("vendor", robot.get("manufacturer", "Unknown")),
+                        category=robot.get("category", "Cleaning Robot"),
+                        monthly_lease=float(robot.get("monthly_lease", 0)),
+                        time_efficiency=float(robot.get("time_efficiency", 0.8)),
+                        image_urls=image_urls,
+                        match_score=s["match_score"],
+                        modes=robot.get("modes", []),
+                        surfaces=robot.get("surfaces", []),
+                        key_reasons=robot.get("key_reasons", []),
+                        specs=robot.get("specs", []),
+                    )
                 )
-                other_options.append(other_option)
 
         # Include any candidates that the LLM didn't score as other_options
         scored_ids = {s.get("robot_id") for s in scored_robots}
@@ -408,7 +566,7 @@ class RecommendationService:
             recommendations=recommendations,
             other_options=other_options,
             total_robots_evaluated=len(candidates),
-            algorithm_version=LLM_ALGORITHM_VERSION,
+            algorithm_version=ALGORITHM_VERSION,
             generated_at=datetime.utcnow(),
         )
 
@@ -416,14 +574,7 @@ class RecommendationService:
         self,
         request: RecommendationsRequest,
     ) -> RecommendationsResponse:
-        """Fallback to manual scoring algorithm.
-
-        Args:
-            request: Original recommendations request.
-
-        Returns:
-            RecommendationsResponse using manual scoring.
-        """
+        """Fallback to pure manual scoring (no semantic search)."""
         from src.services.roi_service import ROIService
 
         logger.info("Using manual scoring fallback")

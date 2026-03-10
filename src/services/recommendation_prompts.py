@@ -139,10 +139,18 @@ def format_discovery_context(answers: dict) -> str:
     if company_name:
         lines.append(f"- Company: {company_name}")
 
-    # Size/Courts
+    # Size/Courts - use facility-aware label
     courts_count = _get_answer_value(answers, "courts_count")
     if courts_count:
-        lines.append(f"- Size: {courts_count} courts/areas")
+        company_type_val = _get_answer_value(answers, "company_type") or ""
+        size_label = {
+            "Pickleball Club": "courts",
+            "Tennis Club": "courts",
+            "Warehouse": "loading bays/zones",
+            "Restaurant": "dining areas/zones",
+            "Datacenter": "server rooms/zones",
+        }.get(company_type_val, "areas/zones")
+        lines.append(f"- Size: {courts_count} {size_label}")
 
     # Cleaning method
     method = _get_answer_value(answers, "method")

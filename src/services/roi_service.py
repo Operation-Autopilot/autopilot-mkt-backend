@@ -21,13 +21,14 @@ from src.schemas.roi import (
     ROICalculationRequest,
     ROICalculationResponse,
     ROIInputs,
+    SavingsBreakdown,
 )
 from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
 
 # Algorithm version for tracking
-ALGORITHM_VERSION_MANUAL = "1.0.0"
+ALGORITHM_VERSION_MANUAL = "2.1.0"
 ALGORITHM_VERSION_LLM = "2.0.0"
 
 # Spend mapping from discovery answer values to numeric amounts
@@ -91,7 +92,7 @@ class ROIService:
             raw_spend = str(monthly_spend_answer.get("value", ""))
         else:
             raw_spend = ""
-        manual_monthly_spend = SPEND_MAP.get(raw_spend, 4330.0)  # Default fallback
+        manual_monthly_spend = SPEND_MAP.get(raw_spend, 3500.0)  # Default fallback
 
         # Get duration (hours per session) safely
         duration_answer = answers.get("duration")
@@ -157,6 +158,13 @@ class ROIService:
     ) -> ROICalculation:
         """Calculate ROI for a specific robot.
 
+        Single-path formula — no double-counting:
+          residual_labor  = current_cost × (1 - time_efficiency)
+          robot_total     = lease + (lease × maintenance_factor)
+          gross_savings   = current_cost × time_efficiency - robot_total
+          efficiency_bonus = current_cost × 0.05  (modest indirect benefits)
+          net_savings     = min(gross + bonus, current_cost)  (hard cap)
+
         Args:
             robot: Robot data from catalog.
             inputs: ROI calculation inputs.
@@ -164,85 +172,61 @@ class ROIService:
         Returns:
             ROICalculation with projected savings.
         """
-        # Get robot lease cost
         robot_monthly_cost = float(robot.get("monthly_lease", 0))
         time_efficiency = float(robot.get("time_efficiency", 0.8))
 
-        # Calculate savings
         current_monthly_cost = inputs.manual_monthly_spend
         current_monthly_hours = inputs.manual_monthly_hours
 
-        # Time saved = current hours * efficiency factor (robot handles this fraction of work)
+        # Time saved
         hours_saved_monthly = current_monthly_hours * time_efficiency
 
-        # Calculate savings: robots are always more cost-efficient
-        # Include multiple benefit factors to ensure positive ROI
-        
-        # Base savings: cost eliminated from manual work (labor + supplies + overhead)
-        cost_eliminated = current_monthly_cost * time_efficiency
-        
-        # Additional indirect benefits (robots provide comprehensive value):
-        # 1. Labor value of time saved (includes management overhead, scheduling, training)
-        labor_value_of_time_saved = hours_saved_monthly * inputs.labor_rate * 1.35  # 35% overhead factor
-        
-        # 2. Quality/consistency benefits (reduced errors, rework, customer satisfaction, compliance)
-        quality_benefit = current_monthly_cost * 0.08  # 8% of spend saved from quality improvements
-        
-        # 3. Reduced risk and variability costs (insurance, liability, missed cleanings)
-        risk_reduction = robot_monthly_cost * 0.15  # 15% of robot cost in risk reduction value
-        
-        # 4. Supply cost savings (robots often use supplies more efficiently)
-        supply_savings = current_monthly_cost * 0.03  # 3% supply efficiency
-        
-        # 5. Operational flexibility value (can redeploy staff, scale operations)
-        flexibility_value = robot_monthly_cost * 0.08  # 8% flexibility premium
-        
-        # Total gross savings (use the higher of cost-based or labor-based, plus all benefits)
-        base_savings = max(cost_eliminated, labor_value_of_time_saved)
-        gross_savings = base_savings + quality_benefit + risk_reduction + supply_savings + flexibility_value
-        
-        # Account for maintenance costs
+        # Single-path savings calculation
+        residual_labor_cost = current_monthly_cost * (1 - time_efficiency)
         maintenance_cost = robot_monthly_cost * inputs.maintenance_factor
+        robot_total_cost = robot_monthly_cost + maintenance_cost
 
-        # Net monthly savings = gross savings minus robot cost and maintenance
-        # Ensure minimum savings floor (at least 15% of robot cost as savings)
-        # This ensures robots always show meaningful ROI
-        raw_savings = gross_savings - robot_monthly_cost - maintenance_cost
-        min_savings_floor = robot_monthly_cost * 0.15  # Minimum 15% savings
-        estimated_monthly_savings = max(raw_savings, min_savings_floor)
+        gross_savings = current_monthly_cost * time_efficiency - robot_total_cost
+        efficiency_bonus = current_monthly_cost * 0.05  # modest 5% indirect benefits
+
+        # Hard cap: can't save more than you spend; negative is valid (honest signal)
+        net_savings = min(gross_savings + efficiency_bonus, current_monthly_cost)
+
+        estimated_monthly_savings = net_savings
         estimated_yearly_savings = estimated_monthly_savings * 12
 
-        # Calculate ROI percentage
-        # ROI = (savings / robot_cost) * 100
-        # Always positive due to generous calculation assumptions
+        # ROI percentage
         if robot_monthly_cost > 0:
-            roi_percent = max(10.0, (estimated_monthly_savings / robot_monthly_cost) * 100)
+            roi_percent = (estimated_monthly_savings / robot_monthly_cost) * 100
         else:
             roi_percent = 0.0
 
-        # Calculate payback period (in months)
+        # Payback period
         payback_months = None
         if estimated_monthly_savings > 0:
-            # Assuming purchase price for payback calculation
             purchase_price = float(robot.get("purchase_price", robot_monthly_cost * 36))
             payback_months = purchase_price / estimated_monthly_savings
 
         # Determine confidence level
         confidence = self._determine_confidence(answers or {})
 
-        # Factors considered
         factors_considered = [
             "manual_monthly_spend",
             "time_efficiency",
             "robot_lease_cost",
-            "labor_rate",
             "maintenance_factor",
-            "quality_benefits",
-            "risk_reduction",
-            "supply_efficiency",
-            "operational_flexibility",
-            "overhead_savings",
+            "efficiency_bonus",
         ]
+
+        breakdown = SavingsBreakdown(
+            current_monthly_cost=round(current_monthly_cost, 2),
+            residual_labor_cost=round(residual_labor_cost, 2),
+            robot_lease_cost=round(robot_monthly_cost, 2),
+            robot_maintenance_cost=round(maintenance_cost, 2),
+            gross_savings=round(gross_savings, 2),
+            efficiency_bonus=round(efficiency_bonus, 2),
+            net_savings=round(estimated_monthly_savings, 2),
+        )
 
         return ROICalculation(
             current_monthly_cost=round(current_monthly_cost, 2),
@@ -253,6 +237,7 @@ class ROIService:
             hours_saved_monthly=round(hours_saved_monthly, 1),
             roi_percent=round(roi_percent, 1),
             payback_months=round(payback_months, 1) if payback_months else None,
+            savings_breakdown=breakdown,
             confidence=confidence,
             algorithm_version=ALGORITHM_VERSION_MANUAL,
             factors_considered=factors_considered,
@@ -436,7 +421,7 @@ class ROIService:
         budget_reason = None
 
         if monthly_spend:
-            budget_mid = SPEND_MAP.get(monthly_spend, 4330)
+            budget_mid = SPEND_MAP.get(monthly_spend, 3500.0)
 
             if robot_monthly_lease <= budget_mid * 0.5:
                 # Robot is well under budget - good value

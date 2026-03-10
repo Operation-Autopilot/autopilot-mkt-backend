@@ -237,3 +237,32 @@ class TestCreateFromSession:
         )
 
         assert result["phase"] == "roi"
+
+
+class TestGetOrCreateNullGuard:
+    """Tests for get_or_create null guard on insert returning empty."""
+
+    @pytest.mark.asyncio
+    async def test_insert_returns_empty_raises_value_error(
+        self, discovery_service: DiscoveryProfileService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that insert returning empty data raises ValueError, not IndexError."""
+        # First call returns empty (no existing profile)
+        empty_response = MagicMock()
+        empty_response.data = []
+
+        # Second call (insert) also returns empty
+        insert_response = MagicMock()
+        insert_response.data = []
+
+        mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = (
+            empty_response
+        )
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = (
+            insert_response
+        )
+
+        with pytest.raises(ValueError, match="Failed to create discovery profile"):
+            await discovery_service.get_or_create(
+                profile_id=UUID("660e8400-e29b-41d4-a716-446655440000")
+            )
