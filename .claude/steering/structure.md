@@ -102,8 +102,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (17 files)
-    └── ...017_pickleball_messaging.sql  ← last applied
+└── supabase/migrations/  (18 files)
+    └── ...018_data_corrections.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -296,4 +296,5 @@ class {Resource}Response({Resource}Base):
 - `015_add_purchase_price_ids.sql` — Add Stripe purchase price IDs to robot_catalog for one-time purchase support
 - `016_enable_sessions_rls.sql` — Enable RLS on sessions table to protect sensitive session_token column
 - `017_pickleball_messaging.sql` — 017_pickleball_messaging.sql
+- `018_data_corrections.sql` — 018_data_corrections.sql
 <!-- AUTO-MIGRATIONS:END -->

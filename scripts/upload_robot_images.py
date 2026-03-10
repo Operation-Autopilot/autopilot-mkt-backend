@@ -37,19 +37,28 @@ from src.core.supabase import get_supabase_client
 # Keys are normalized (lowercase) for matching, values are the actual prefixes to search for
 # Based on actual files in the public folder
 ROBOT_IMAGE_MAPPING: dict[str, list[str]] = {
-    "cc1": ["cc1-1", "cc1-3"],  # cc1-2 doesn't exist
-    "cc1 pro": ["cc1-pro-1", "cc1-pro-2", "cc1-pro-3"],
-    "mt1 vac": ["mt1-vac-1", "mt1-vac-2"],  # mt1-vac-3 doesn't exist
-    "kleenbot c30": ["Kleenbot-C30-1", "Kleenbot-C30-2", "Kleenbot-C30-3"],
-    "kleenbot c40": ["Kleenbot-C40-1", "Kleenbot-C40-2", "Kleenbot-C40-3"],  # C40-2 has no extension
-    "kas": ["Kas-2", "Kas-3"],  # Kas-1 doesn't exist
-    "neo 2w": ["Neo2W-2-1", "NeoDSX-2-2"],  # Neo2W-3 doesn't exist, using NeoDSX-2-2
-    "t380amr": ["T380AMR-2", "T380AMR-3"],
-    "t7amr": ["T7AMR", "T7AMR-2", "T7AMR-3"],
-    "phantas": ["Gausium-Phantas-1", "Gausium-Phantas-2", "Gausium-Phantas-3"],
-    "vacuum 40": ["Vacuum-40-1", "Vacuum-40-2", "Vacuum-40-3"],
-    "pudu t300": ["PUDU-T300-1"],
-    "pudu t600": ["Pudu-T600-1", "Pudu-T600-2"],
+    "pudu cc1": ["cc1-1", "cc1-2", "cc1-3"],
+    "pudu cc1 pro": ["cc1-pro-1", "cc1-pro-2", "cc1-pro-3"],
+    "pudu mt1 vac": ["mt1-vac-1", "mt1-vac-2", "mt1-vac-3"],
+    "avidbots neo 2w": ["neo2w-1", "neo2w-2", "neo2w-3"],
+    "avidbots kas": ["kas-1", "kas-2", "kas-3"],
+    "tennant t7amr": ["t7amr-1", "t7amr-2", "t7amr-3"],
+    "tennant t380amr": ["t380amr-1", "t380amr-2", "t380amr-3"],
+    "tennant t16amr": ["t16amr-1", "t16amr-2", "t16amr-3"],
+    "gausium phantas": ["phantas-1", "phantas-2", "phantas-3"],
+    "gausium vacuum 40": ["vacuum40-1", "vacuum40-2", "vacuum40-3"],
+    "gausium beetle": ["beetle-1", "beetle-2", "beetle-3"],
+    "gausium omnie": ["omnie-1", "omnie-2", "omnie-3"],
+    "gausium scrubber 50": ["scrubber50-1", "scrubber50-2", "scrubber50-3"],
+    "gausium scrubber 75": ["scrubber75-1", "scrubber75-2", "scrubber75-3"],
+    "keenon kleenbot c20": ["c20-1"],
+    "keenon kleenbot c40": ["c40-1", "c40-2"],
+    "keenon kleenbot c30": ["c30-1", "c30-2", "c30-3"],
+    "keenon kleenbot c55": ["c55-1", "c55-2", "c55-3"],
+    "pudu t300": ["t300-1", "t300-2", "t300-3"],
+    "pudu t600": ["t600-1", "t600-2", "t600-3"],
+    "marvel": ["marvel-1", "marvel-2", "marvel-3"],
+    "mira": ["mira-1", "mira-2", "mira-3"],
 }
 
 # Storage bucket name
