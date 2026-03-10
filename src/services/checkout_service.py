@@ -314,7 +314,25 @@ class CheckoutService(BaseService):
 
         if response.data:
             logger.info("Order %s marked as %s", order_id, log_status)
-            return response.data[0]
+            order = response.data[0]
+
+            # Fire HubSpot Closed Won task on successful card payment (fire-and-forget)
+            if log_status == "completed" and self.settings.hubspot_access_token:
+                from src.services.hubspot_service import HubSpotService
+                line_items = order.get("line_items") or []
+                robot_name = line_items[0].get("product_name", "") if line_items else ""
+                asyncio.create_task(
+                    HubSpotService().on_payment_completed(
+                        email=order.get("customer_email") or "",
+                        order_id=str(order.get("id", "")),
+                        robot_name=robot_name,
+                        total_cents=order.get("total_cents", 0),
+                        payment_provider="stripe",
+                        company_name=None,
+                    )
+                )
+
+            return order
 
         logger.warning("Order not found for completion: %s", order_id)
         return {}

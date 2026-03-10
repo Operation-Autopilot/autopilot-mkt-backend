@@ -50,6 +50,10 @@ create_secret "pinecone-environment" "Pinecone environment" "PINECONE_ENVIRONMEN
 create_secret "stripe-secret-key" "Stripe secret API key" "STRIPE_SECRET_KEY"
 create_secret "stripe-webhook-secret" "Stripe webhook signing secret" "STRIPE_WEBHOOK_SECRET"
 create_secret "stripe-publishable-key" "Stripe publishable key" "STRIPE_PUBLISHABLE_KEY"
+create_secret "gynger-api-key" "Gynger vendor API key" "GYNGER_API_KEY"
+create_secret "gynger-webhook-secret" "Gynger webhook secret" "GYNGER_WEBHOOK_SECRET"
+create_secret "gynger-checkout-base-url" "Gynger checkout redirect base URL" "GYNGER_CHECKOUT_BASE_URL"
+create_secret "hubspot-access-token" "HubSpot Private App access token" "HUBSPOT_ACCESS_TOKEN"
 
 echo ""
 echo "✅ Secrets setup complete!"

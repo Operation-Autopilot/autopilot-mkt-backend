@@ -1,19 +1,19 @@
 """Gynger B2B financing service.
 
-Handles creating financing applications on Gynger's platform and processing
-webhook notifications when applications are approved or rejected.
+Handles creating checkout sessions on Gynger's platform and processing
+webhook notifications when financing offers are approved or declined.
 
-NOTE: Gynger's vendor API requires login to access full documentation.
-      Items marked with `# VERIFY BEFORE PRODUCTION` need one-time verification
-      against the Gynger developer portal once credentials are obtained.
-      The integration assumes standard B2B financing REST patterns.
+API reference: https://api.gynger.io/v1
+Auth: Authorization: {GYNGER_API_KEY}  (no "Bearer" prefix)
+
+Webhook verification: Gynger sends Authorization: {webhook_secret}
+where webhook_secret is the 'secret' returned when registering the webhook.
 """
 
-import hashlib
-import hmac
+import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
-from uuid import UUID
 
 import httpx
 
@@ -23,266 +23,252 @@ from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
+# Offer statuses that mean financing was approved
+_APPROVED_STATUSES = {"ACTIVE", "ACCEPTED", "PAID"}
+# Offer statuses that mean financing was declined
+_DECLINED_STATUSES = {"DECLINED", "CANCELED"}
+
 
 class GyngerService(BaseService):
     """Service for Gynger embedded financing integration."""
 
     def __init__(self) -> None:
-        """Initialize Gynger service with Supabase client and settings."""
         self.client = get_supabase_client()
         self.settings = get_settings()
 
-    async def create_financing_application(
+    def _headers(self) -> dict[str, str]:
+        """Build Gynger API request headers.
+
+        Note: Gynger uses plain Authorization without a 'Bearer' prefix.
+        """
+        return {
+            "Authorization": self.settings.gynger_api_key,
+            "Content-Type": "application/json",
+        }
+
+    async def create_checkout_session(
         self,
         robot: dict,
         amount_cents: int,
         customer_email: str | None,
-        success_url: str,
-        cancel_url: str,
         order_id: str,
     ) -> dict:
-        """Create a Gynger financing application for a robot purchase.
+        """Create a Gynger checkout session for a robot purchase.
 
-        Calls POST /applications on the Gynger vendor API to initiate a
-        financing application and returns a URL to redirect the user to.
+        Calls POST /v1/checkout/sessions and constructs the buyer redirect URL
+        from the returned session ID (the URL is not included in the response).
 
         Args:
-            robot: Robot catalog row (must have at least 'name' and 'id').
+            robot: Robot catalog row (must have 'name').
             amount_cents: Total financing amount in cents.
-            customer_email: Customer email (optional, pre-fills Gynger form).
-            success_url: URL Gynger redirects to on approval.
-            cancel_url: URL Gynger redirects to on cancellation.
-            order_id: Internal order UUID (stored as metadata on the application).
+            customer_email: Optional — pre-fills the Gynger form.
+            order_id: Internal order UUID (stored on the order row for webhook lookup).
 
         Returns:
             dict with keys:
-                application_id (str): Gynger's application reference ID.
-                application_url (str): URL to redirect the user to Gynger.
+                application_id (str): Gynger session ID (gyn_sess_...).
+                application_url (str): URL to redirect the user to Gynger checkout.
 
         Raises:
-            ValueError: If Gynger API key is not configured.
+            ValueError: If Gynger API key is not configured or response is unexpected.
             httpx.HTTPStatusError: If Gynger API returns an error response.
         """
-        api_key = self.settings.gynger_api_key
-        if not api_key:
+        if not self.settings.gynger_api_key:
             raise ValueError(
                 "Gynger is not configured. Please set GYNGER_API_KEY environment variable."
             )
 
-        base_url = self.settings.gynger_api_url
+        product_description = f"{robot.get('name', 'Robot')} — Autopilot Marketplace"
 
-        # VERIFY BEFORE PRODUCTION: confirm that Gynger's create-application endpoint is
-        # POST /applications and that request body uses these exact field names
-        # (amount_cents, currency, customer_email, success_url, cancel_url, metadata).
-        # Obtain Gynger vendor API credentials to access their developer portal.
-        request_body = {
-            "amount_cents": amount_cents,
-            "currency": "usd",
-            "customer_email": customer_email,
-            "success_url": success_url,
-            "cancel_url": cancel_url,
-            "metadata": {
-                "order_id": order_id,
-                "robot_id": str(robot.get("id", "")),
-                "robot_name": robot.get("name", ""),
-                "source": "autopilot_marketplace",
-            },
+        request_body: dict[str, Any] = {
+            "amount": amount_cents,
+            "productDescription": product_description[:255],
+            "contractType": "SINGLE",
+            "autoBillCreation": True,
         }
+        if customer_email:
+            request_body["buyerEmail"] = customer_email
 
         logger.info(
-            "Creating Gynger financing application for order %s (amount: $%.2f)",
+            "Creating Gynger checkout session for order %s (amount: $%.2f)",
             order_id,
             amount_cents / 100,
         )
 
         async with httpx.AsyncClient(timeout=30) as http_client:
             response = await http_client.post(
-                f"{base_url}/applications",
+                f"{self.settings.gynger_api_url}/checkout/sessions",
                 json=request_body,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "X-Autopilot-Source": "marketplace",
-                },
+                headers=self._headers(),
             )
             response.raise_for_status()
             data = response.json()
 
-        # VERIFY BEFORE PRODUCTION: confirm Gynger response shape contains
-        # 'application_id' (or 'id') and 'application_url' (or 'url').
-        application_id = data.get("application_id") or data.get("id")
-        application_url = data.get("application_url") or data.get("url")
-
-        if not application_id or not application_url:
+        session_id = data.get("id")
+        if not session_id:
             raise ValueError(
-                f"Unexpected Gynger API response: missing application_id or application_url. "
-                f"Response keys: {list(data.keys())}"
+                f"Unexpected Gynger API response: missing 'id'. Response keys: {list(data.keys())}"
             )
 
-        logger.info(
-            "Gynger application created: id=%s for order %s",
-            application_id,
-            order_id,
-        )
+        # The buyer redirect URL is not returned by the API — construct it.
+        checkout_base = self.settings.gynger_checkout_base_url.rstrip("/")
+        application_url = f"{checkout_base}/{session_id}"
+
+        logger.info("Gynger checkout session created: id=%s for order %s", session_id, order_id)
 
         return {
-            "application_id": application_id,
+            "application_id": session_id,
             "application_url": application_url,
         }
 
-    def verify_webhook_signature(self, payload: bytes, sig_header: str) -> dict:
-        """Validate Gynger webhook signature and parse the event.
+    def verify_webhook_secret(self, auth_header: str) -> None:
+        """Verify a Gynger webhook request by comparing the Authorization header.
 
-        Assumes HMAC-SHA256 signed with GYNGER_WEBHOOK_SECRET, using a
-        'X-Gynger-Signature' or similar header format.
-
-        NOTE: Signature algorithm and header format should be confirmed with
-        Gynger docs once credentials are available.
+        Gynger sends the webhook secret directly as the Authorization header value
+        (no 'Bearer' prefix, no HMAC — just a direct string comparison).
 
         Args:
-            payload: Raw request body bytes.
-            sig_header: Value of the signature header from the webhook request.
-
-        Returns:
-            dict: Parsed event payload.
+            auth_header: Value of the Authorization header from the webhook request.
 
         Raises:
-            ValueError: If webhook secret is not configured or signature is invalid.
+            ValueError: If webhook secret is not configured or the header doesn't match.
         """
         webhook_secret = self.settings.gynger_webhook_secret
         if not webhook_secret:
             raise ValueError(
-                "GYNGER_WEBHOOK_SECRET is not configured. Cannot verify webhook signature."
+                "GYNGER_WEBHOOK_SECRET is not configured. Cannot verify webhook."
+            )
+        if auth_header != webhook_secret:
+            raise ValueError("Invalid Gynger webhook Authorization header")
+
+    async def handle_offer_status_updated(self, event: dict) -> dict | None:
+        """Process a Gynger 'offer.status.updated' webhook event.
+
+        Maps offer status to our order status:
+            ACTIVE / ACCEPTED / PAID  → completed
+            DECLINED / CANCELED       → cancelled
+            VIEWED / CREATED          → no change (informational)
+
+        Looks up the order by gynger_application_id = event.data.checkoutSessionId.
+
+        Returns:
+            Updated order row, or None if no action was taken.
+        """
+        event_data = event.get("data", {})
+        checkout_session_id = event_data.get("checkoutSessionId")
+        offer_status = event_data.get("status", "")
+        offer_id = event_data.get("id", "")
+
+        if not checkout_session_id:
+            raise ValueError(
+                f"offer.status.updated missing checkoutSessionId. "
+                f"event_data keys: {list(event_data.keys())}"
             )
 
-        # VERIFY BEFORE PRODUCTION: confirm Gynger uses HMAC-SHA256 for webhook signatures
-        # and that the header value is a plain hex digest or 'sha256=<hex>' format.
-        expected_sig = hmac.new(
-            webhook_secret.encode(),
-            payload,
-            hashlib.sha256,
-        ).hexdigest()
+        logger.info(
+            "Gynger offer.status.updated: offer=%s session=%s status=%s",
+            offer_id,
+            checkout_session_id,
+            offer_status,
+        )
 
-        # The header may be a plain hex digest or "sha256=<hex>" format
-        # Support both
-        provided_sig = sig_header.lstrip("sha256=")
+        if offer_status in _APPROVED_STATUSES:
+            new_order_status = "completed"
+            extra: dict[str, Any] = {"completed_at": datetime.now(timezone.utc).isoformat()}
+        elif offer_status in _DECLINED_STATUSES:
+            new_order_status = "cancelled"
+            extra = {}
+        else:
+            logger.info("Offer status %s is informational — no order update needed", offer_status)
+            return None
 
-        if not hmac.compare_digest(expected_sig, provided_sig):
-            raise ValueError("Invalid Gynger webhook signature")
+        update_payload: dict[str, Any] = {
+            "status": new_order_status,
+            "payment_provider": "gynger",
+            **extra,
+        }
+        query = (
+            self.client.table("orders")
+            .update(update_payload)
+            .eq("gynger_application_id", checkout_session_id)
+        )
+        result = await self._execute_sync(query)
 
-        import json
+        if not result.data:
+            raise ValueError(
+                f"No order found with gynger_application_id={checkout_session_id}"
+            )
 
+        order = result.data[0]
+        logger.info(
+            "Order %s marked as %s (Gynger offer %s)",
+            order.get("id"),
+            new_order_status,
+            offer_status,
+        )
+
+        # Fire HubSpot Closed Won task when financing is approved
+        if new_order_status == "completed":
+            try:
+                import asyncio
+                from src.core.config import get_settings as _gs
+                from src.services.hubspot_service import HubSpotService
+                settings = _gs()
+                if settings.hubspot_access_token:
+                    email = order.get("customer_email") or ""
+                    line_items = order.get("line_items") or []
+                    robot_name = line_items[0].get("product_name", "") if line_items else ""
+                    asyncio.create_task(
+                        HubSpotService().on_payment_completed(
+                            email=email,
+                            order_id=str(order.get("id", "")),
+                            robot_name=robot_name,
+                            total_cents=order.get("total_cents", 0),
+                            payment_provider="gynger",
+                            company_name=None,
+                        )
+                    )
+            except Exception:
+                logger.exception("HubSpot task creation failed after Gynger approval (non-fatal)")
+
+        return order
+
+    async def handle_session_status_updated(self, event: dict) -> None:
+        """Process a Gynger 'checkout.session.status.updated' webhook event.
+
+        OFFER_CREATED: session has moved to offer stage — informational only.
+        EXPIRED: session expired — cancel the pending order if still pending.
+        """
+        event_data = event.get("data", {})
+        session_id = event_data.get("id", "")
+        session_status = event_data.get("status", "")
+
+        logger.info(
+            "Gynger checkout.session.status.updated: session=%s status=%s",
+            session_id,
+            session_status,
+        )
+
+        if session_status == "EXPIRED" and session_id:
+            query = (
+                self.client.table("orders")
+                .update({"status": "cancelled"})
+                .eq("gynger_application_id", session_id)
+                .eq("status", "pending")
+            )
+            result = await self._execute_sync(query)
+            if result.data:
+                logger.info(
+                    "Order cancelled due to expired Gynger session %s", session_id
+                )
+
+    def parse_webhook_payload(self, payload: bytes) -> dict:
+        """Parse raw webhook payload bytes into a dict.
+
+        Raises:
+            ValueError: If payload is not valid JSON.
+        """
         try:
-            event = json.loads(payload)
+            return json.loads(payload)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in Gynger webhook payload: {e}") from e
-
-        return event
-
-    async def handle_application_approved(self, event: dict) -> dict:
-        """Process a Gynger 'application.approved' webhook event.
-
-        Updates the associated order status to 'completed' and stores
-        the Gynger application ID on the order row.
-
-        Args:
-            event: Parsed Gynger webhook event dict.
-
-        Returns:
-            dict: Updated order row.
-
-        Raises:
-            ValueError: If order cannot be found from event data.
-        """
-        # VERIFY BEFORE PRODUCTION: confirm Gynger webhook event shape has 'data' wrapper
-        # and that 'application_id' and 'metadata.order_id' are the correct field names.
-        event_data = event.get("data", event)
-        application_id = event_data.get("application_id") or event_data.get("id")
-        metadata = event_data.get("metadata", {})
-        order_id = metadata.get("order_id")
-
-        if not order_id:
-            raise ValueError(
-                f"Cannot process application.approved: missing order_id in metadata. "
-                f"event_data keys: {list(event_data.keys())}"
-            )
-
-        logger.info(
-            "Processing Gynger application.approved: application_id=%s order_id=%s",
-            application_id,
-            order_id,
-        )
-
-        from datetime import datetime, timezone
-
-        update_query = (
-            self.client.table("orders")
-            .update(
-                {
-                    "status": "completed",
-                    "gynger_application_id": application_id,
-                    "payment_provider": "gynger",
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-            .eq("id", order_id)
-        )
-        result = await self._execute_sync(update_query)
-
-        if not result.data:
-            raise ValueError(f"Order {order_id} not found or update failed")
-
-        logger.info("Order %s marked as completed via Gynger financing", order_id)
-        return result.data[0]
-
-    async def handle_application_rejected(self, event: dict) -> dict:
-        """Process a Gynger 'application.rejected' webhook event.
-
-        Updates the associated order status to 'cancelled'.
-
-        Args:
-            event: Parsed Gynger webhook event dict.
-
-        Returns:
-            dict: Updated order row.
-
-        Raises:
-            ValueError: If order cannot be found from event data.
-        """
-        # VERIFY BEFORE PRODUCTION: confirm Gynger webhook event shape has 'data' wrapper
-        # and that 'application_id' and 'metadata.order_id' are the correct field names.
-        event_data = event.get("data", event)
-        application_id = event_data.get("application_id") or event_data.get("id")
-        metadata = event_data.get("metadata", {})
-        order_id = metadata.get("order_id")
-
-        if not order_id:
-            raise ValueError(
-                f"Cannot process application.rejected: missing order_id in metadata. "
-                f"event_data keys: {list(event_data.keys())}"
-            )
-
-        logger.info(
-            "Processing Gynger application.rejected: application_id=%s order_id=%s",
-            application_id,
-            order_id,
-        )
-
-        update_query = (
-            self.client.table("orders")
-            .update(
-                {
-                    "status": "cancelled",
-                    "gynger_application_id": application_id,
-                    "payment_provider": "gynger",
-                }
-            )
-            .eq("id", order_id)
-        )
-        result = await self._execute_sync(update_query)
-
-        if not result.data:
-            raise ValueError(f"Order {order_id} not found or update failed")
-
-        logger.info("Order %s marked as cancelled (Gynger application rejected)", order_id)
-        return result.data[0]

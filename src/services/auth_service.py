@@ -1,5 +1,6 @@
 """Authentication business logic service."""
 
+import asyncio
 import logging
 from typing import Any
 from uuid import UUID
@@ -94,6 +95,17 @@ class AuthService:
                 )
                 company_id = company["id"]
                 logger.info("Company created for user %s: %s", user.id, company_id)
+
+            # Fire HubSpot Lead creation (fire-and-forget — never blocks signup)
+            if self.settings.hubspot_access_token:
+                from src.services.hubspot_service import HubSpotService
+                asyncio.create_task(
+                    HubSpotService().on_signup(
+                        email=email,
+                        display_name=display_name or email,
+                        company_name=company_name,
+                    )
+                )
 
             return {
                 "user_id": str(user.id),

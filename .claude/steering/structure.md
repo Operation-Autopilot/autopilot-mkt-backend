@@ -30,6 +30,7 @@ autopilot-mkt-backend/
 │   ├── __init__.py
 │   ├── agent_service.py
 │   ├── auth_service.py
+│   ├── base_service.py
 │   ├── checkout_service.py
 │   ├── company_service.py
 │   ├── conversation_service.py

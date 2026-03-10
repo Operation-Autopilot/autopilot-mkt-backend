@@ -132,7 +132,7 @@ else
       
       # Add to env vars if it's one of our required variables
       case "$key" in
-        SUPABASE_URL|SUPABASE_SECRET_KEY|SUPABASE_SIGNING_KEY_JWK|OPENAI_API_KEY|PINECONE_API_KEY|PINECONE_ENVIRONMENT|OPENAI_MODEL|OPENAI_MODEL_PRESET|PINECONE_INDEX_NAME|EMBEDDING_MODEL|MAX_CONTEXT_MESSAGES|AUTH_REDIRECT_URL|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PUBLISHABLE_KEY|STRIPE_SECRET_KEY_TEST|STRIPE_WEBHOOK_SECRET_TEST|RESEND_API_KEY|EMAIL_FROM_ADDRESS)
+        SUPABASE_URL|SUPABASE_SECRET_KEY|SUPABASE_SIGNING_KEY_JWK|OPENAI_API_KEY|PINECONE_API_KEY|PINECONE_ENVIRONMENT|OPENAI_MODEL|OPENAI_MODEL_PRESET|PINECONE_INDEX_NAME|EMBEDDING_MODEL|MAX_CONTEXT_MESSAGES|AUTH_REDIRECT_URL|STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PUBLISHABLE_KEY|STRIPE_SECRET_KEY_TEST|STRIPE_WEBHOOK_SECRET_TEST|RESEND_API_KEY|EMAIL_FROM_ADDRESS|GYNGER_API_KEY|GYNGER_WEBHOOK_SECRET|GYNGER_CHECKOUT_BASE_URL|GYNGER_API_URL|HUBSPOT_ACCESS_TOKEN)
           ENV_VARS="${ENV_VARS},${key}=${value}"
           ;;
         CORS_ORIGINS)
@@ -237,7 +237,7 @@ trap cleanup_env_file EXIT
 
 # Add secrets if using Secret Manager
 if [ "${USE_SECRETS}" = "true" ]; then
-  DEPLOY_CMD="${DEPLOY_CMD} --update-secrets=SUPABASE_URL=supabase-url:latest,SUPABASE_SECRET_KEY=supabase-secret-key:latest,SUPABASE_SIGNING_KEY_JWK=supabase-signing-key-jwk:latest,OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest,PINECONE_ENVIRONMENT=pinecone-environment:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_SECRET_KEY_TEST=stripe-secret-key-test:latest,STRIPE_WEBHOOK_SECRET_TEST=stripe-webhook-secret-test:latest,RESEND_API_KEY=resend-api-key:latest"
+  DEPLOY_CMD="${DEPLOY_CMD} --update-secrets=SUPABASE_URL=supabase-url:latest,SUPABASE_SECRET_KEY=supabase-secret-key:latest,SUPABASE_SIGNING_KEY_JWK=supabase-signing-key-jwk:latest,OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest,PINECONE_ENVIRONMENT=pinecone-environment:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,STRIPE_PUBLISHABLE_KEY=stripe-publishable-key:latest,STRIPE_SECRET_KEY_TEST=stripe-secret-key-test:latest,STRIPE_WEBHOOK_SECRET_TEST=stripe-webhook-secret-test:latest,RESEND_API_KEY=resend-api-key:latest,GYNGER_API_KEY=gynger-api-key:latest,GYNGER_WEBHOOK_SECRET=gynger-webhook-secret:latest,GYNGER_CHECKOUT_BASE_URL=gynger-checkout-base-url:latest,HUBSPOT_ACCESS_TOKEN=hubspot-access-token:latest"
 fi
 
 # Deploy to Cloud Run
