@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import CurrentUser
+from src.core.config import get_settings
 from src.schemas.profile import (
     CompanySummary,
     ProfileResponse,
@@ -122,8 +123,18 @@ async def set_test_account(
         ProfileResponse: The updated profile data.
 
     Raises:
+        HTTPException: 403 if attempting to enable test mode in production without admin role.
         HTTPException: 404 if profile not found.
     """
+    # In production, only admin users may enable test account mode to prevent
+    # ordinary users from bypassing real Stripe charges.
+    settings = get_settings()
+    if data.is_test_account and settings.is_production and user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can enable test account mode in production",
+        )
+
     service = ProfileService()
 
     # Get the profile

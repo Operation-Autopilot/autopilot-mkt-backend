@@ -1,6 +1,7 @@
 """Session business logic service."""
 
 import asyncio
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone
@@ -42,6 +43,18 @@ class SessionService:
         """
         return secrets.token_hex(self.TOKEN_LENGTH // 2)
 
+    @staticmethod
+    def _hash_token(token: str) -> str:
+        """Hash a session token using SHA-256 for secure storage.
+
+        Args:
+            token: The raw session token.
+
+        Returns:
+            str: The hex-encoded SHA-256 hash of the token.
+        """
+        return hashlib.sha256(token.encode()).hexdigest()
+
     async def create_session(self) -> tuple[dict[str, Any], str]:
         """Create a new session with a unique token.
 
@@ -49,9 +62,10 @@ class SessionService:
             tuple: (session_data, session_token)
         """
         token = self._generate_token()
+        token_hash = self._hash_token(token)
 
         session_data = {
-            "session_token": token,
+            "session_token": token_hash,  # store hash, not raw token
             "current_question_index": 0,
             "phase": "discovery",
             "answers": {},
@@ -67,7 +81,7 @@ class SessionService:
 
         if not response.data:
             raise ValueError("Database operation returned no data")
-        return response.data[0], token
+        return response.data[0], token  # return raw token to caller
 
     async def get_session_by_token(self, token: str) -> dict[str, Any] | None:
         """Get a session by its token.
@@ -80,10 +94,11 @@ class SessionService:
         Returns:
             dict | None: The session data or None if not found/expired.
         """
+        token_hash = self._hash_token(token)
         query = (
             self.client.table("sessions")
             .select("*")
-            .eq("session_token", token)
+            .eq("session_token", token_hash)
             .maybe_single()
         )
         response = await self._execute_sync(query)

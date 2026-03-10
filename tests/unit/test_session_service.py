@@ -1,5 +1,6 @@
 """Unit tests for SessionService."""
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID
@@ -66,6 +67,40 @@ class TestCreateSession:
         assert insert_data["answers"] == {}
         assert insert_data["selected_product_ids"] == []
 
+    @pytest.mark.asyncio
+    async def test_stores_hashed_token_not_raw(
+        self, session_service: SessionService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that the raw token is not stored in the DB — only its SHA-256 hash."""
+        mock_response = MagicMock()
+        mock_response.data = [{"id": "test-id", "session_token": "hashed"}]
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = mock_response
+
+        session_data, raw_token = await session_service.create_session()
+
+        insert_call = mock_supabase.table.return_value.insert.call_args
+        insert_data = insert_call[0][0]
+
+        expected_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        assert insert_data["session_token"] == expected_hash
+        assert insert_data["session_token"] != raw_token
+
+    @pytest.mark.asyncio
+    async def test_returns_raw_token_to_caller(
+        self, session_service: SessionService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that the raw (unhashed) token is returned from create_session."""
+        mock_response = MagicMock()
+        mock_response.data = [{"id": "test-id", "session_token": "hashed"}]
+        mock_supabase.table.return_value.insert.return_value.execute.return_value = mock_response
+
+        _session_data, raw_token = await session_service.create_session()
+
+        # Raw token should be 64 hex chars (not a SHA-256 hash length of 64 chars from a hash)
+        # Both are 64 chars, but the raw token must NOT equal the hash of itself
+        assert len(raw_token) == 64
+        assert raw_token != hashlib.sha256(raw_token.encode()).hexdigest()
+
 
 class TestGetSessionByToken:
     """Tests for get_session_by_token method."""
@@ -105,6 +140,22 @@ class TestGetSessionByToken:
         result = await session_service.get_session_by_token("invalid_token")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_queries_db_with_hashed_token(
+        self, session_service: SessionService, mock_supabase: MagicMock
+    ) -> None:
+        """Test that get_session_by_token hashes the token before querying the DB."""
+        mock_response = MagicMock()
+        mock_response.data = None
+        eq_mock = mock_supabase.table.return_value.select.return_value.eq
+        eq_mock.return_value.maybe_single.return_value.execute.return_value = mock_response
+
+        raw_token = "a" * 64
+        await session_service.get_session_by_token(raw_token)
+
+        expected_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        eq_mock.assert_called_once_with("session_token", expected_hash)
 
 
 class TestIsSessionValid:
