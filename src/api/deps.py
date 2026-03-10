@@ -150,6 +150,26 @@ CurrentUser = Annotated[UserContext, Depends(get_current_user)]
 OptionalUser = Annotated[UserContext | None, Depends(get_optional_user)]
 
 
+async def get_admin_user(user: Annotated[UserContext, Depends(get_current_user)]) -> UserContext:
+    """Require admin access based on email domain.
+
+    Builds on existing CurrentUser dependency. Frontend email-domain check is
+    UI-only; this is the real enforcement layer.
+
+    Raises:
+        HTTPException: 403 if user is not from the admin email domain.
+    """
+    settings = get_settings()
+    if not settings.admin_email_domain:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access not configured")
+    if not user.email or not user.email.endswith(f"@{settings.admin_email_domain}"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return user
+
+
+RequireAdmin = Annotated[UserContext, Depends(get_admin_user)]
+
+
 # Cookie utility functions
 
 

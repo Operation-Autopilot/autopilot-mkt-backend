@@ -144,6 +144,20 @@ class Settings(BaseSettings):
         description="Frontend application URL for email links",
     )
 
+    # Admin
+    admin_email_domain: str = Field(default="", description="Email domain for admin access (e.g. tryautopilot.com)")
+
+    # HubSpot OAuth
+    hubspot_client_id: str = Field(default="", description="HubSpot OAuth client ID")
+    hubspot_client_secret: str = Field(default="", description="HubSpot OAuth client secret")
+    hubspot_redirect_uri: str = Field(default="", description="HubSpot OAuth redirect URI")
+
+    # Fireflies
+    fireflies_api_key: str = Field(default="", description="Fireflies workspace API key")
+
+    # Token encryption at rest (base64-encoded 32-byte key)
+    encryption_key: str = Field(default="", description="Base64-encoded 32-byte key for token encryption at rest")
+
     @model_validator(mode="after")
     def set_mock_openai_default(self) -> "Settings":
         """Set mock_openai based on environment if not explicitly set via MOCK_OPENAI env var.
