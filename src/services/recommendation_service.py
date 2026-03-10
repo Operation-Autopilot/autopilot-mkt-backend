@@ -7,7 +7,7 @@ the top recommendations — never for scoring or ranking.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 # Algorithm version — 3.0 = deterministic scoring + semantic boost + optional LLM summaries
 ALGORITHM_VERSION = "3.0.0"
+
+# Maximum score boost from semantic similarity (0-15 points out of 100)
+SEMANTIC_BOOST_MAX = 15.0
 
 # LLM prompt for generating summaries only (no scoring, no IDs)
 SUMMARY_SYSTEM_PROMPT = """You are an expert robotics procurement consultant. Given a customer profile and a ranked list of cleaning robots, write a short personalized summary for each robot explaining why it's a good fit for THIS customer.
@@ -265,7 +268,7 @@ class RecommendationService:
 
             # Apply semantic similarity boost (up to 15 points)
             semantic_score = float(robot.get("_semantic_score", 0.5))
-            semantic_boost = semantic_score * 15.0  # 0-15 points
+            semantic_boost = semantic_score * SEMANTIC_BOOST_MAX  # 0-15 points
             reasons.append(
                 RecommendationReason(
                     factor="Semantic Relevance",
@@ -509,6 +512,8 @@ class RecommendationService:
                         reasons=reasons,
                         summary=s.get("summary", "A suitable option for your needs."),
                         projected_roi=roi,
+                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else None,
+                        best_for=robot.get("best_for"),
                         modes=robot.get("modes", []),
                         surfaces=robot.get("surfaces", []),
                         key_reasons=robot.get("key_reasons", []),
@@ -527,6 +532,8 @@ class RecommendationService:
                         time_efficiency=float(robot.get("time_efficiency", 0.8)),
                         image_urls=image_urls,
                         match_score=s["match_score"],
+                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else None,
+                        best_for=robot.get("best_for"),
                         modes=robot.get("modes", []),
                         surfaces=robot.get("surfaces", []),
                         key_reasons=robot.get("key_reasons", []),
@@ -567,7 +574,7 @@ class RecommendationService:
             other_options=other_options,
             total_robots_evaluated=len(candidates),
             algorithm_version=ALGORITHM_VERSION,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
     async def _fallback_to_manual(

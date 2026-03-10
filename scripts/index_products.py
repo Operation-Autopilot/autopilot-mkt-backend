@@ -16,7 +16,7 @@ from pathlib import Path
 # Add the project root to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.services.product_service import ProductService
+from src.services.robot_catalog_service import RobotCatalogService
 
 # Configure logging
 logging.basicConfig(
@@ -31,8 +31,8 @@ async def main() -> None:
     logger.info("Starting product indexing...")
 
     try:
-        service = ProductService()
-        result = await service.index_all_products()
+        service = RobotCatalogService()
+        result = await service.index_all_robots()
 
         logger.info("Indexing complete!")
         logger.info(f"Total products: {result['total']}")

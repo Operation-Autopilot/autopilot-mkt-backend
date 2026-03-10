@@ -48,7 +48,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        env_file_priority="env_file",  # .env file takes precedence over shell env vars
     )
 
     # Application
@@ -128,7 +127,7 @@ class Settings(BaseSettings):
 
     # Gynger B2B Financing
     gynger_api_key: str = Field(default="", description="Gynger vendor API key")
-    gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")  # TODO: confirm with Gynger docs
+    gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")  # VERIFY: confirm exact base URL with Gynger before enabling in production
     gynger_webhook_secret: str = Field(default="", description="Gynger webhook signing secret")
 
     @field_validator(

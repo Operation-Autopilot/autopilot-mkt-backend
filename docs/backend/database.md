@@ -184,9 +184,17 @@ Migrations are managed in `supabase/migrations/` and applied via the Supabase CL
 | `003_create_conversations` | Conversations and messages tables |
 | `004_create_sessions` | Anonymous sessions table |
 | `005_create_discovery_profiles` | AI-extracted discovery profiles |
-| `006_create_robot_catalog` | Robot product catalog |
-| `007_create_orders` | Order records |
-| `011_add_test_account_flag` | Add `is_test_account` to profiles |
+| `006_create_robot_catalog` | Robot product catalog (seeds 13 robots) |
+| `007_create_orders` | Order records with `order_status` enum |
+| `008_rename_conversations_user_id` | Rename `user_id` → `profile_id` on conversations |
+| `009_add_cached_recommendations` | `answers_hash` + `cached_recommendations` on discovery_profiles |
+| `010_make_stripe_checkout_session_id_nullable` | Make `stripe_checkout_session_id` nullable (supports Gynger orders) |
+| `011_add_test_account_flag` | Add `is_test_account` boolean to profiles |
+| `012_create_floor_plan_analysis` | `floor_plan_analyses` table with GPT-4o Vision results |
+| `013_add_payment_pending_status` | Add `payment_pending` to `order_status` enum (ACH / delayed payments) |
+| `014_add_gynger_to_orders` | `gynger_application_id` + `payment_provider` columns on orders |
+
+> See [Database Migrations](../status/migrations.md) for the auto-generated version of this table.
 
 ```bash
 # Apply all pending migrations

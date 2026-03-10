@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
@@ -298,7 +298,7 @@ class ROIService:
             robot_name=robot.get("name", "Unknown"),
             calculation=calculation,
             inputs_used=inputs,
-            calculated_at=datetime.utcnow(),
+            calculated_at=datetime.now(timezone.utc),
         )
 
     def _score_robot_manual(
@@ -716,7 +716,7 @@ class ROIService:
             other_options=other_options,
             total_robots_evaluated=len(cleaning_robots),
             algorithm_version=ALGORITHM_VERSION_MANUAL,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
 

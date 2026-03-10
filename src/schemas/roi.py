@@ -1,6 +1,6 @@
 """ROI and Recommendation Pydantic schemas for API request/response models."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -141,7 +141,7 @@ class ROICalculationResponse(BaseModel):
     calculation: ROICalculation = Field(description="ROI calculation result")
     inputs_used: ROIInputs = Field(description="Inputs used for calculation")
     calculated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When the calculation was performed"
     )
 
@@ -195,6 +195,8 @@ class RobotRecommendation(BaseModel):
     )
 
     # Full robot data for display
+    purchase_price: float | None = Field(default=None, description="One-time purchase price")
+    best_for: str | None = Field(default=None, description="Best use case / ideal environment")
     modes: list[str] = Field(default_factory=list, description="Cleaning modes")
     surfaces: list[str] = Field(default_factory=list, description="Supported surfaces")
     key_reasons: list[str] = Field(default_factory=list, description="Key selling points")
@@ -238,6 +240,8 @@ class OtherRobotOption(BaseModel):
     time_efficiency: float = Field(description="Time efficiency factor")
     image_urls: list[str] = Field(default_factory=list, description="Product image URLs")
     match_score: float = Field(ge=0, le=100, description="Match score (0-100)")
+    purchase_price: float | None = Field(default=None, description="One-time purchase price")
+    best_for: str | None = Field(default=None, description="Best use case / ideal environment")
     modes: list[str] = Field(default_factory=list, description="Cleaning modes")
     surfaces: list[str] = Field(default_factory=list, description="Supported surfaces")
     key_reasons: list[str] = Field(default_factory=list, description="Key selling points")
@@ -264,7 +268,7 @@ class RecommendationsResponse(BaseModel):
         description="Version of the recommendation algorithm"
     )
     generated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="When recommendations were generated"
     )
 

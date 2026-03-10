@@ -162,6 +162,11 @@ def create_app() -> FastAPI:
 
     app.include_router(api_v1_router)
 
+    # Always-available OpenAPI schema for tooling (export-openapi.mjs, docs generation)
+    @app.get("/openapi-dev.json", include_in_schema=False)
+    async def openapi_dev():
+        return app.openapi()
+
     return app
 
 

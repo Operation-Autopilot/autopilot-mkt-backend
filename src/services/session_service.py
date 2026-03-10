@@ -1,6 +1,5 @@
 """Session business logic service."""
 
-import asyncio
 import hashlib
 import logging
 import secrets
@@ -10,6 +9,7 @@ from uuid import UUID
 
 from src.core.supabase import get_supabase_client
 from src.schemas.session import SessionUpdate
+from src.services.base_service import BaseService
 
 if TYPE_CHECKING:
     from src.services.checkout_service import CheckoutService
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class SessionService:
+class SessionService(BaseService):
     """Service for managing anonymous user sessions."""
 
     TOKEN_LENGTH = 64  # Length of session token in characters
@@ -30,10 +30,6 @@ class SessionService:
         """
         self.client = get_supabase_client()
         self._checkout_service = checkout_service
-
-    async def _execute_sync(self, query):
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     def _generate_token(self) -> str:
         """Generate a cryptographically secure session token.

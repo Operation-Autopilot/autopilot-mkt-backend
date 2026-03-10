@@ -10,8 +10,8 @@ Autopilot Marketplace is an agent-led procurement platform that guides buyers th
 <summary>Text fallback</summary>
 
 ```
-Browser (React 18 SPA) → FastAPI (Routers → Services → External Clients)
-  → Supabase PostgreSQL, Pinecone Vector DB, OpenAI GPT-4o, Stripe
+Browser (React 19 SPA) → FastAPI (Routers → Services → External Clients)
+  → Supabase PostgreSQL, Pinecone Vector DB, OpenAI GPT-4o, Stripe, Gynger
 ```
 
 </details>
@@ -20,7 +20,7 @@ Browser (React 18 SPA) → FastAPI (Routers → Services → External Clients)
 
 ### Frontend: React SPA
 
-The frontend is a single-page application built with React 18 and TypeScript. It communicates exclusively with the FastAPI backend over HTTPS using REST JSON endpoints. State management combines React Context for session and auth state with TanStack React Query for server state caching and synchronization.
+The frontend is a single-page application built with React 19 and TypeScript. It communicates exclusively with the FastAPI backend over HTTPS using REST JSON endpoints. State management combines React Context for session and auth state with TanStack React Query for server state caching and synchronization.
 
 ### Backend: FastAPI
 

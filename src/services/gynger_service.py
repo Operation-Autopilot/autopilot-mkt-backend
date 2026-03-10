@@ -4,12 +4,11 @@ Handles creating financing applications on Gynger's platform and processing
 webhook notifications when applications are approved or rejected.
 
 NOTE: Gynger's vendor API requires login to access full documentation.
-      Fields and endpoint paths marked with `# TODO: confirm with Gynger docs`
-      will need one-time verification once credentials are obtained.
+      Items marked with `# VERIFY BEFORE PRODUCTION` need one-time verification
+      against the Gynger developer portal once credentials are obtained.
       The integration assumes standard B2B financing REST patterns.
 """
 
-import asyncio
 import hashlib
 import hmac
 import logging
@@ -20,21 +19,18 @@ import httpx
 
 from src.core.config import get_settings
 from src.core.supabase import get_supabase_client
+from src.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
 
-class GyngerService:
+class GyngerService(BaseService):
     """Service for Gynger embedded financing integration."""
 
     def __init__(self) -> None:
         """Initialize Gynger service with Supabase client and settings."""
         self.client = get_supabase_client()
         self.settings = get_settings()
-
-    async def _execute_sync(self, query: Any) -> Any:
-        """Run synchronous Supabase query in thread pool to avoid blocking event loop."""
-        return await asyncio.to_thread(query.execute)
 
     async def create_financing_application(
         self,
@@ -75,8 +71,10 @@ class GyngerService:
 
         base_url = self.settings.gynger_api_url
 
-        # TODO: confirm endpoint path with Gynger docs
-        # TODO: confirm request body field names with Gynger docs
+        # VERIFY BEFORE PRODUCTION: confirm that Gynger's create-application endpoint is
+        # POST /applications and that request body uses these exact field names
+        # (amount_cents, currency, customer_email, success_url, cancel_url, metadata).
+        # Obtain Gynger vendor API credentials to access their developer portal.
         request_body = {
             "amount_cents": amount_cents,
             "currency": "usd",
@@ -99,7 +97,7 @@ class GyngerService:
 
         async with httpx.AsyncClient(timeout=30) as http_client:
             response = await http_client.post(
-                f"{base_url}/applications",  # TODO: confirm endpoint
+                f"{base_url}/applications",
                 json=request_body,
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -110,7 +108,8 @@ class GyngerService:
             response.raise_for_status()
             data = response.json()
 
-        # TODO: confirm response field names with Gynger docs
+        # VERIFY BEFORE PRODUCTION: confirm Gynger response shape contains
+        # 'application_id' (or 'id') and 'application_url' (or 'url').
         application_id = data.get("application_id") or data.get("id")
         application_url = data.get("application_url") or data.get("url")
 
@@ -156,8 +155,8 @@ class GyngerService:
                 "GYNGER_WEBHOOK_SECRET is not configured. Cannot verify webhook signature."
             )
 
-        # TODO: confirm exact signature format with Gynger docs
-        # Assumed: HMAC-SHA256 hex digest of raw payload body
+        # VERIFY BEFORE PRODUCTION: confirm Gynger uses HMAC-SHA256 for webhook signatures
+        # and that the header value is a plain hex digest or 'sha256=<hex>' format.
         expected_sig = hmac.new(
             webhook_secret.encode(),
             payload,
@@ -195,7 +194,8 @@ class GyngerService:
         Raises:
             ValueError: If order cannot be found from event data.
         """
-        # TODO: confirm event data structure with Gynger docs
+        # VERIFY BEFORE PRODUCTION: confirm Gynger webhook event shape has 'data' wrapper
+        # and that 'application_id' and 'metadata.order_id' are the correct field names.
         event_data = event.get("data", event)
         application_id = event_data.get("application_id") or event_data.get("id")
         metadata = event_data.get("metadata", {})
@@ -213,7 +213,7 @@ class GyngerService:
             order_id,
         )
 
-        import datetime
+        from datetime import datetime, timezone
 
         update_query = (
             self.client.table("orders")
@@ -222,7 +222,7 @@ class GyngerService:
                     "status": "completed",
                     "gynger_application_id": application_id,
                     "payment_provider": "gynger",
-                    "completed_at": datetime.datetime.utcnow().isoformat(),
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
             .eq("id", order_id)
@@ -249,7 +249,8 @@ class GyngerService:
         Raises:
             ValueError: If order cannot be found from event data.
         """
-        # TODO: confirm event data structure with Gynger docs
+        # VERIFY BEFORE PRODUCTION: confirm Gynger webhook event shape has 'data' wrapper
+        # and that 'application_id' and 'metadata.order_id' are the correct field names.
         event_data = event.get("data", event)
         application_id = event_data.get("application_id") or event_data.get("id")
         metadata = event_data.get("metadata", {})

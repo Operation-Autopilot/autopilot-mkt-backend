@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
+from fastapi import Depends, Header, HTTPException, Request, Response, status
 
 from src.api.middleware.auth import AuthError, AuthErrorCode, decode_jwt
 from src.api.middleware.error_handler import RateLimitError
@@ -239,9 +239,15 @@ async def get_current_user_or_session(
             try:
                 payload = decode_jwt(token)
                 return AuthContext(user=payload.to_user_context())
-            except AuthError:
-                # Invalid JWT - fall through to session handling
-                pass
+            except AuthError as jwt_err:
+                # Invalid JWT - log warning and fall through to session handling
+                # to avoid silently masking auth failures during debugging
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Authorization header present but JWT is invalid (%s); "
+                    "falling back to session auth",
+                    jwt_err.code.value if hasattr(jwt_err, "code") else type(jwt_err).__name__,
+                )
 
     # Try session token from header or cookie
     session_token = get_session_token(request)

@@ -127,3 +127,67 @@ test("shows error state when API fails", async () => {
 - Test files live next to the source files they test: `Component.tsx` and `Component.test.tsx`.
 - Shared test utilities and MSW setup live in `src/test/`.
 - Use `vi.fn()` for mock functions and `vi.spyOn()` for spying on existing methods.
+
+---
+
+## Playwright E2E Tests
+
+End-to-end tests live in `e2e/` at the project root and run against the local dev server.
+
+### Configuration
+
+`playwright.config.ts` — `testDir: "./e2e"`, `baseURL: "http://localhost:3000"`, timeout 30s. Three project profiles: `desktop` (1280×720), `mobile` (Pixel 5), `ipad-*` (1024–1366px with touch).
+
+### Running E2E Tests
+
+```bash
+# Requires dev server running: npm run dev (port 3000) + backend on port 8080
+npx playwright test
+
+# Specific suites
+npx playwright test e2e/journeys/
+npx playwright test e2e/nonlinear/
+npx playwright test e2e/payment/
+
+# By tag
+npx playwright test --grep "@success"
+npx playwright test --grep "@failure"
+npx playwright test --grep "@payment"
+npx playwright test --grep "@nonlinear"
+npx playwright test --grep "@multiuser"
+
+# Debug
+npx playwright test --ui
+npx playwright show-report
+```
+
+### Mock Architecture
+
+All backend API calls are intercepted via `page.route("**/api/v1/**", ...)` — see `e2e/fixtures/backend-mock.ts`. Tests never hit a real backend.
+
+Individual tests layer overrides on top of the base mock to simulate specific scenarios (negative ROI, Gynger response, zero savings, etc.).
+
+### Fixtures & Helpers
+
+| File | Purpose |
+|------|---------|
+| `fixtures/sku_data.ts` | All 13 active SKUs with pricing and specs |
+| `fixtures/deal_profiles.ts` | 10 journey archetypes (J-01–J-10) |
+| `fixtures/test_users.ts` | 5 test user personas (owner, gm, staff, co_owner_a/b) |
+| `fixtures/notifications.ts` | Expected notification shapes + implementation status |
+| `helpers/marketplace.ts` | `MarketplacePage` POM — chat, phase nav, robot selection |
+| `helpers/roi_calculator.ts` | ROI formula + assertion helpers |
+| `helpers/auth.ts` | Mock login, session injection, signup helpers |
+| `helpers/payment.ts` | Checkout mock helpers, Stripe/Gynger intercepts |
+| `helpers/email.ts` | Email API assertion helpers (most email is unimplemented) |
+| `helpers/supabase.ts` | Direct DB assertions (requires env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`) |
+
+### Not-Yet-Implemented Features
+
+Tests for features not yet shipped use `test.fixme(true, 'reason')`:
+- Share links (`/share/{token}`) — on `feature/adminPortal` branch, not yet merged to `dev`; `SharedROIPage`, `src/api/routes/shares.py`, and migrations 015/016 all pending merge
+- Quote request standalone flow — no dedicated endpoint
+- Demo booking calendar — no integration
+- Multi-user company roles (Owner vs GM permission gate)
+- Order confirmation emails — `EmailService` exists but no order email method
+- HubSpot / Fireflies integrations — implemented on `feature/adminPortal`, not yet merged to `dev`

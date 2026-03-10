@@ -4,91 +4,67 @@ title: Roadmap
 
 # Roadmap
 
-## MVP Milestones (Completed)
+## Shipped (as of March 2026)
 
-All MVP milestones have been delivered. Each phase built on the previous one to form the core marketplace platform.
+### Core Platform
+- ✅ FastAPI backend, Supabase PostgreSQL, GCP Cloud Run
+- ✅ React 19 + Vite 6 SPA, Tailwind CSS 3 (PostCSS pipeline)
+- ✅ Anonymous sessions (cookie + `X-Session-Token` header dual-path)
+- ✅ JWT auth — signup, login, refresh, session claim
 
-### Core Infrastructure
-- FastAPI application scaffold with async support
-- Supabase project setup (database, auth, storage)
-- GCP Cloud Run deployment pipeline
-- Vite SPA frontend with React and TypeScript
+### Discovery & Agent
+- ✅ Chat-driven discovery (OpenAI GPT-4o agent, multi-phase)
+- ✅ Background profile extraction from conversation
+- ✅ Floor plan upload + GPT-4o Vision analysis (auto-fills sqft)
+- ✅ `ready_for_roi` gate — transitions to ROI phase when ≥4 answers
 
-### Authentication
-- Supabase Auth integration (email/password, OAuth)
-- JWT validation middleware
-- Role-based access control (buyer, vendor, admin)
-- Protected route guards on frontend
+### Robot Catalog & ROI
+- ✅ 13 active SKUs in Supabase (Pudu, Avidbots, Tennant, Gausium, Keenon)
+- ✅ Deterministic recommendation scoring + optional LLM summaries
+- ✅ ROI calculation v2.1.0 (formula-based, not LLM)
+- ✅ Recommendation cache (in-memory, TTL 3600s)
 
-### Conversations and Agent
-- Real-time conversation API endpoints
-- AI agent powered by OpenAI chat completions
-- Message history persistence in Supabase
-- Streaming response support
+### Checkout & Payments
+- ✅ Stripe monthly lease subscription (`mode: "subscription"`)
+- ✅ Stripe full purchase (one-time)
+- ✅ Gynger B2B financing (`POST /checkout/gynger-session`)
+- ✅ Stripe + Gynger webhooks with HMAC signature verification
+- ✅ Test account mode (`is_test_account` flag, uses `STRIPE_SECRET_KEY_TEST`)
+- ✅ All 13 robots synced to Stripe production
 
-### Profiles and Companies
-- User profile CRUD operations
-- Company entity management
-- Vendor onboarding flow
-- Buyer organization setup
-
-### Sessions and Discovery
-- Browsing session tracking
-- Vendor and product discovery search
-- Filtering and sorting capabilities
-- Session-based recommendations
-
-### RAG Integration
-- Document ingestion pipeline
-- Pinecone vector store for embeddings
-- OpenAI embedding generation
-- Context-aware retrieval for agent responses
-
-### Checkout and Stripe
-- Stripe Connect for vendor payouts
-- Checkout session creation
-- Payment intent handling
-- Order confirmation and receipt generation
-
-### Frontend Phases
-- Component library and design system
-- Conversation UI with streaming messages
-- Discovery and search pages
-- Profile management views
-- Checkout flow
+### Testing
+- ✅ Playwright E2E suite — 689 tests, 39 files across journeys/nonlinear/payment/procurement/multiuser
+- ✅ 16 pre-existing E2E specs (auth, chat, discovery, ROI, greenlight, session, mobile)
+- ✅ Vitest unit tests for components and services
 
 ---
 
-## Future Vision
+## In Progress / Planned
 
-The following areas represent the next wave of development beyond the MVP.
+### Admin Layer
+- 🔲 `src/api/routes/admin.py` — admin-only endpoints
+- 🔲 `src/api/routes/shares.py` — public share link endpoints
+- 🔲 `src/services/hubspot_service.py` — HubSpot OAuth + meetings API
+- 🔲 `src/services/fireflies_service.py` — Fireflies GraphQL meeting extraction
+- 🔲 Migration 015: `hubspot_connections` table
+- 🔲 Migration 016: `session_shares` table
+- 🔲 Frontend: `AdminPanel`, `HubSpotPanel`, `FirefliesPanel`, `SharedROIPage`
 
-### Self-Serve Journey
-- Guided vendor onboarding wizard
-- Automated document upload and processing
-- Self-service billing and subscription management
-- Buyer-side saved searches and alerts
+### Procurement Paths
+- 🔲 Quote request standalone endpoint + confirmation state
+- 🔲 Demo booking calendar integration (Calendly or equivalent)
+- 🔲 Order confirmation transactional emails (Resend, via `EmailService`)
 
-### Multi-Tenant Architecture
-- Workspace isolation per organization
-- Tenant-scoped data access policies
-- Custom branding per tenant
-- Admin console for tenant management
+### Multi-User & Permissions
+- 🔲 Owner vs GM role enforcement at checkout
+- 🔲 Approval gate for non-owner purchasers
+- 🔲 Share link — pre-filled configuration URL for staff review
 
-### Advanced Analytics
-- Vendor performance dashboards
-- Buyer engagement metrics
-- Conversion funnel tracking
-- Agent effectiveness scoring (response quality, resolution rate)
+### Notifications
+- 🔲 HubSpot deal creation on checkout
+- 🔲 Deal stage change → Slack/email notification triggers
+- 🔲 Order confirmation email via Resend
 
-### Mobile Optimization
-- Responsive layout refinements
-- Touch-optimized conversation interface
-- Progressive Web App (PWA) support
-- Push notifications for conversation updates
-
-### Integration APIs
-- CRM integrations (Salesforce, HubSpot)
-- Procurement system connectors (Coupa, SAP Ariba)
-- Webhook support for external event consumers
-- Public REST API with OAuth2 client credentials flow
+### Infrastructure
+- 🔲 Supabase Realtime for concurrent session sync
+- 🔲 Multi-worker webhook replay prevention (current: in-memory, per-worker only)

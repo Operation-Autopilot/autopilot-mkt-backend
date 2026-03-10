@@ -2,91 +2,108 @@
 
 ## Directory Organization
 
+<!-- AUTO-TREE:START -->
 ```
 autopilot-mkt-backend/
-├── .claude/                    # Claude Code workflow infrastructure
-│   ├── agents/                 # Spec validator/executor agents
-│   ├── commands/               # CLI command definitions
-│   ├── specs/                  # Feature specifications
-│   │   └── {feature-name}/
-│   │       ├── requirements.md
-│   │       ├── design.md
-│   │       └── tasks.md
-│   ├── steering/               # Project steering documents
-│   │   ├── product.md
-│   │   ├── tech.md
-│   │   └── structure.md
-│   └── templates/              # Spec templates
-├── src/                        # Application source code
-│   ├── api/                    # API layer
-│   │   ├── routes/             # FastAPI router modules
-│   │   │   ├── __init__.py
-│   │   │   ├── health.py
-│   │   │   ├── profiles.py
-│   │   │   ├── companies.py
-│   │   │   ├── conversations.py
-│   │   │   └── products.py
-│   │   ├── middleware/         # Request/response middleware
-│   │   │   ├── __init__.py
-│   │   │   ├── auth.py
-│   │   │   └── error_handler.py
-│   │   └── deps.py             # Dependency injection (get_current_user, etc.)
-│   ├── core/                   # Core infrastructure
-│   │   ├── __init__.py
-│   │   ├── config.py           # Settings from environment
-│   │   ├── supabase.py         # Supabase client singleton
-│   │   ├── openai.py           # OpenAI client singleton
-│   │   └── pinecone.py         # Pinecone client singleton
-│   ├── models/                 # Database table representations
-│   │   ├── __init__.py
-│   │   ├── profile.py
-│   │   ├── company.py
-│   │   ├── conversation.py
-│   │   ├── message.py
-│   │   └── product.py
-│   ├── schemas/                # Pydantic request/response models
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── profile.py
-│   │   ├── company.py
-│   │   ├── conversation.py
-│   │   ├── message.py
-│   │   └── product.py
-│   ├── services/               # Business logic layer
-│   │   ├── __init__.py
-│   │   ├── profile_service.py
-│   │   ├── company_service.py
-│   │   ├── conversation_service.py
-│   │   ├── agent_service.py    # OpenAI agent orchestration
-│   │   └── rag_service.py      # Pinecone search operations
-│   └── main.py                 # FastAPI application entry point
-├── tests/                      # Test suite
+├── src/api/routes/
 │   ├── __init__.py
-│   ├── conftest.py             # Pytest fixtures
-│   ├── unit/                   # Unit tests
-│   │   ├── __init__.py
-│   │   ├── test_services/
-│   │   └── test_schemas/
-│   └── integration/            # Integration tests
-│       ├── __init__.py
-│       └── test_api/
-├── scripts/                    # Utility scripts
-│   └── index_products.py       # One-time product indexing
-├── supabase/                   # Supabase configuration
-│   └── migrations/             # SQL migration files
-│       ├── 001_create_profiles.sql
-│       ├── 002_create_companies.sql
-│       ├── 003_create_conversations.sql
-│       ├── 004_create_products.sql
-│       └── 005_enable_rls_policies.sql
-├── .env.example                # Environment variable template
-├── .gitignore
-├── Dockerfile                  # Production container
-├── docker-compose.yml          # Local development
-├── pyproject.toml              # Project metadata and dependencies
-├── requirements.txt            # Pinned dependencies
-└── README.md                   # Project documentation
+│   ├── auth.py
+│   ├── checkout.py
+│   ├── companies.py
+│   ├── conversations.py
+│   ├── discovery.py
+│   ├── floor_plans.py
+│   ├── health.py
+│   ├── invitations.py
+│   ├── profiles.py
+│   ├── robots.py
+│   ├── roi.py
+│   ├── sessions.py
+│   ├── webhooks.py
+├── src/api/middleware/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── error_handler.py
+│   ├── latency_logging.py
+│   ├── request_size.py
+├── src/services/
+│   ├── __init__.py
+│   ├── agent_service.py
+│   ├── auth_service.py
+│   ├── checkout_service.py
+│   ├── company_service.py
+│   ├── conversation_service.py
+│   ├── discovery_profile_service.py
+│   ├── email_service.py
+│   ├── extraction_constants.py
+│   ├── floor_plan_prompts.py
+│   ├── floor_plan_service.py
+│   ├── gynger_service.py
+│   ├── invitation_service.py
+│   ├── profile_extraction_service.py
+│   ├── profile_service.py
+│   ├── rag_service.py
+│   ├── recommendation_cache.py
+│   ├── recommendation_prompts.py
+│   ├── recommendation_service.py
+│   ├── robot_catalog_service.py
+│   ├── roi_service.py
+│   ├── sales_knowledge_service.py
+│   ├── session_service.py
+├── src/schemas/
+│   ├── __init__.py
+│   ├── auth.py
+│   ├── checkout.py
+│   ├── common.py
+│   ├── company.py
+│   ├── conversation.py
+│   ├── discovery.py
+│   ├── floor_plan.py
+│   ├── message.py
+│   ├── profile.py
+│   ├── robot.py
+│   ├── roi.py
+│   ├── session.py
+├── src/models/
+│   ├── __init__.py
+│   ├── company.py
+│   ├── conversation.py
+│   ├── discovery_profile.py
+│   ├── message.py
+│   ├── order.py
+│   ├── profile.py
+│   ├── robot.py
+│   ├── session.py
+├── src/core/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── openai.py
+│   ├── pinecone.py
+│   ├── rate_limiter.py
+│   ├── stripe.py
+│   ├── supabase.py
+│   ├── token_budget.py
+├── scripts/
+│   ├── deploy-cloud-run.sh
+│   ├── dev-server.sh
+│   ├── e2e_stripe_test.py
+│   ├── export-openapi.mjs
+│   ├── extract_call_knowledge.py
+│   ├── generate-dmms-docs.mjs
+│   ├── index_products.py
+│   ├── install-git-hooks.mjs
+│   ├── migrate-dmms-hierarchy.mjs
+│   ├── seed_test_robot.py
+│   ├── setup-secrets.sh
+│   ├── stripe_dev.sh
+│   ├── sync_stripe_products.py
+│   ├── update-steering.mjs
+│   ├── upload_robot_images.py
+│   ├── validate_robot_images.py
+└── supabase/migrations/  (14 files)
+    └── ...014_add_gynger_to_orders.sql  ← last applied
 ```
+<!-- AUTO-TREE:END -->
 
 ## Naming Conventions
 
@@ -256,3 +273,22 @@ class {Resource}Response({Resource}Base):
 - Complex logic should include inline comments explaining "why"
 - Each module should have a module-level docstring describing its purpose
 - API endpoints are documented via FastAPI's automatic OpenAPI generation
+
+## Applied Migrations
+
+<!-- AUTO-MIGRATIONS:START -->
+- `001_create_profiles.sql` — Create profiles table
+- `002_create_companies.sql` — Create companies table
+- `003_create_conversations.sql` — Create conversations and messages tables
+- `004_create_sessions.sql` — Create sessions table
+- `005_create_discovery_profiles.sql` — Create discovery_profiles table
+- `006_create_robot_catalog.sql` — Create robot_catalog table
+- `007_create_orders.sql` — Create orders table
+- `008_rename_conversations_user_id.sql` — Rename conversations.user_id to profile_id for clarity
+- `009_add_cached_recommendations.sql` — Add cached recommendations columns to discovery_profiles
+- `010_make_stripe_checkout_session_id_nullable.sql` — Make stripe_checkout_session_id nullable to allow orders to be created
+- `011_add_test_account_flag.sql` — Add is_test_account flag to profiles table
+- `012_create_floor_plan_analysis.sql` — Create floor_plan_analyses table
+- `013_add_payment_pending_status.sql` — Add 'payment_pending' status to order_status enum for ACH delayed payments
+- `014_add_gynger_to_orders.sql` — Add Gynger financing columns to orders table
+<!-- AUTO-MIGRATIONS:END -->
