@@ -20,6 +20,8 @@ from src.schemas.auth import (
     ResetPasswordResponse,
     SignupRequest,
     SignupResponse,
+    SignupWithSessionRequest,
+    SignupWithSessionResponse,
     VerifyEmailRequest,
     VerifyEmailResponse,
 )
@@ -60,6 +62,49 @@ async def signup(data: SignupRequest) -> SignupResponse:
             company_name=data.company_name,
         )
         return SignupResponse(**result)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+@router.post(
+    "/signup-with-session",
+    response_model=SignupWithSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Sign up and claim session atomically",
+    description="Creates user account and claims anonymous session in one request. "
+    "Prevents race conditions between signup and session claim by running "
+    "extraction inline and claiming atomically.",
+)
+async def signup_with_session(data: SignupWithSessionRequest) -> SignupWithSessionResponse:
+    """Sign up a new user and atomically claim their anonymous session.
+
+    This endpoint combines signup + session claim into a single request to prevent
+    race conditions where background extraction tasks could lose data between
+    separate signup and claim calls.
+
+    Args:
+        data: Signup fields plus optional session token.
+
+    Returns:
+        SignupWithSessionResponse: Combined signup + claim results.
+
+    Raises:
+        HTTPException: 400 if signup fails (email exists, weak password, etc.).
+    """
+    service = AuthService()
+
+    try:
+        result = await service.signup_with_session(
+            email=data.email,
+            password=data.password,
+            display_name=data.display_name,
+            company_name=data.company_name,
+            session_token=data.session_token,
+        )
+        return SignupWithSessionResponse(**result)
     except ValidationError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -270,10 +270,6 @@ class SessionService(BaseService):
         if not session:
             raise ValueError("Session not found")
 
-        # Check if already claimed
-        if session.get("claimed_by_profile_id"):
-            raise ValueError("Session has already been claimed")
-
         # Check if expired
         expires_at = session.get("expires_at")
         if expires_at:
@@ -281,6 +277,18 @@ class SessionService(BaseService):
                 expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
             if expires_at < datetime.now(timezone.utc):
                 raise ValueError("Session has expired")
+
+        # Atomically claim the session — prevents double-claim race condition
+        # The WHERE clause ensures only one request can succeed
+        claim_query = (
+            self.client.table("sessions")
+            .update({"claimed_by_profile_id": str(profile_id)})
+            .eq("id", str(session_id))
+            .is_("claimed_by_profile_id", "null")
+        )
+        claim_response = await self._execute_sync(claim_query)
+        if not claim_response.data:
+            raise ValueError("Session has already been claimed")
 
         # Create or update discovery profile with session data
         discovery_profile = await self._create_or_update_discovery_profile(
@@ -309,12 +317,6 @@ class SessionService(BaseService):
                 session_id=session_id,
                 profile_id=profile_id,
             )
-
-        # Mark session as claimed
-        query = self.client.table("sessions").update(
-            {"claimed_by_profile_id": str(profile_id)}
-        ).eq("id", str(session_id))
-        await self._execute_sync(query)
 
         return {
             "discovery_profile": discovery_profile,
