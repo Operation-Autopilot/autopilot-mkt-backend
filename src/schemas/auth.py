@@ -235,3 +235,35 @@ class RefreshTokenResponse(BaseModel):
     access_token: str = Field(description="New JWT access token")
     refresh_token: str | None = Field(default=None, description="New refresh token if rotated")
     expires_in: int = Field(description="Token expiration time in seconds")
+
+
+# Consolidated signup + session claim schemas
+
+
+class SignupWithSessionRequest(BaseModel):
+    """Request schema for atomic signup + session claim."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    email: EmailStr = Field(..., description="User's email address")
+    password: str = Field(..., description="User's password", min_length=8, max_length=100)
+    display_name: str | None = Field(default=None, description="User's display name", max_length=255)
+    company_name: str | None = Field(default=None, description="Company name to create", max_length=255)
+    session_token: str | None = Field(default=None, description="Anonymous session token to claim")
+
+
+class SignupWithSessionResponse(BaseModel):
+    """Response schema for atomic signup + session claim."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: str = Field(description="Newly created user ID")
+    email: str = Field(description="User's email address")
+    message: str = Field(description="Success message")
+    email_sent: bool = Field(description="Whether verification email was sent")
+    profile_id: str | None = Field(default=None, description="Created profile ID")
+    company_id: str | None = Field(default=None, description="Created company ID")
+    session_claimed: bool = Field(default=False, description="Whether session was claimed")
+    discovery_profile_id: str | None = Field(default=None, description="Discovery profile ID from claim")
+    conversation_transferred: bool = Field(default=False, description="Whether conversation was transferred")
+    orders_transferred: int = Field(default=0, description="Number of orders transferred")
