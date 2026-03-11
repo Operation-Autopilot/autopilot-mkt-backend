@@ -102,8 +102,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (21 files)
-    └── ...021_set_inactive_robots.sql  ← last applied
+└── supabase/migrations/  (23 files)
+    └── ...023_add_test_robot.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -300,4 +300,6 @@ class {Resource}Response({Resource}Base):
 - `019_add_purchase_price_ids.sql` — Add Stripe purchase price IDs to robot_catalog for one-time purchase support
 - `020_enable_sessions_rls.sql` — Enable RLS on sessions table to protect sensitive session_token column
 - `021_set_inactive_robots.sql` — 021_set_inactive_robots.sql
+- `022_robot_image_updates.sql` — 022_robot_image_updates.sql
+- `023_add_test_robot.sql` — 023_add_test_robot.sql
 <!-- AUTO-MIGRATIONS:END -->

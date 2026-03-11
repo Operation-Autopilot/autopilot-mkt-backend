@@ -726,8 +726,12 @@ Move on to the NEXT topic in the "STILL NEED TO LEARN" list.
         if _duration_known and _frequency_known:
             spend_unknown_instruction = (
                 '12. If the user says "I\'m not sure" or "I don\'t know" about monthly cleaning spend, '
-                "acknowledge it warmly — you already have their cleaning schedule, so just let them know "
-                "you'll estimate their costs from that data. Do NOT ask for hours or frequency again. "
+                "acknowledge it warmly, then ask two quick follow-up questions to help estimate their costs: "
+                '"No problem! To help me estimate, roughly how much do you pay your cleaners per hour, '
+                'and how many cleaners do you typically have?" '
+                "Extract their answers as hourly_rate (dollar amount per hour) and staff_count (number of cleaners). "
+                "If they can't answer those either, reassure them you'll estimate from their cleaning schedule. "
+                "Do NOT ask for hours or frequency again — you already have those. "
                 'Set monthly_spend answer value to "unknown".'
             )
         else:
@@ -756,7 +760,7 @@ INSTRUCTIONS:
 3. If there are STILL missing questions after considering the current message, weave ONE into your response
 4. NEVER ask about something the user just told you in this message - move to the next unknown topic
 5. NEVER re-ask a question you just asked - the user's message is likely the answer
-6. Set ready_for_roi=true ONLY when you have answers for most required questions (4+ of 7)
+6. Set ready_for_roi=true ONLY when you have answers for at least 5 of 7 required questions AND you have asked about frequency and duration (critical for ROI calculations). Do NOT set it early just because the user seems engaged.
 7. Return chips matching the question you're asking, or empty array for open-ended questions
 8. When discussing specific robots, ONLY mention robots from the AVAILABLE ROBOT CATALOG above
 9. NEVER make up or hallucinate robot models - if asked about specific models, only reference the catalog
@@ -1369,8 +1373,12 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             )
 
         async def fetch_recommendations() -> Any:
-            """Fetch recommendations if we have enough answers."""
-            if len(answered_keys) < 4 or not current_answers:
+            """Fetch recommendations if we have enough required answers."""
+            # Only count REQUIRED question keys — non-required keys (sqft, etc.)
+            # shouldn't trigger recommendation fetching prematurely.
+            # Threshold of 5 matches MIN_QUESTIONS_FOR_ROI in discovery.py.
+            answered_required = answered_keys & REQUIRED_QUESTION_KEYS
+            if len(answered_required) < 5 or not current_answers:
                 return None
 
             try:
