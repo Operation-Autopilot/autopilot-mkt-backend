@@ -56,6 +56,34 @@ FREQUENCY_MAP: dict[str, float] = {
 }
 
 
+def _parse_monthly_spend(raw_spend: str) -> float:
+    """Parse a monthly spend string to a float.
+
+    Handles both preset option strings (from SPEND_MAP) and custom typed
+    values like "3000", "$3,000", "3.5k", "3500/month", "around $4,000".
+    """
+    import re
+
+    result = SPEND_MAP.get(raw_spend)
+    if result is not None:
+        return result
+
+    if raw_spend:
+        try:
+            cleaned = raw_spend.lower().replace(",", "").replace("$", "").strip()
+            for suffix in ("/month", "per month", "monthly", "/mo"):
+                cleaned = cleaned.replace(suffix, "").strip()
+            if cleaned.endswith("k"):
+                return float(cleaned[:-1]) * 1000
+            match = re.search(r"\d+(?:\.\d+)?", cleaned)
+            if match:
+                return float(match.group())
+        except (ValueError, AttributeError):
+            pass
+
+    return 3500.0  # Default
+
+
 class ROIService:
     """Service for ROI calculations and robot recommendations."""
 
@@ -92,28 +120,7 @@ class ROIService:
             raw_spend = str(monthly_spend_answer.get("value", ""))
         else:
             raw_spend = ""
-        manual_monthly_spend = SPEND_MAP.get(raw_spend)
-        if manual_monthly_spend is None and raw_spend:
-            # User typed a custom value — try to parse it as a number.
-            # Handle: "3000", "$3,000", "$3.5k", "3500/month", "around $4,000", etc.
-            try:
-                cleaned = raw_spend.lower().replace(",", "").replace("$", "").strip()
-                # Strip trailing context like "/month", "per month", "monthly"
-                for suffix in ("/month", "per month", "monthly", "/mo"):
-                    cleaned = cleaned.replace(suffix, "").strip()
-                # Handle "k" suffix for thousands
-                if cleaned.endswith("k"):
-                    manual_monthly_spend = float(cleaned[:-1]) * 1000
-                else:
-                    # Extract the first numeric token (handles "around 4000" etc.)
-                    import re
-                    match = re.search(r"\d+(?:\.\d+)?", cleaned)
-                    if match:
-                        manual_monthly_spend = float(match.group())
-            except (ValueError, AttributeError):
-                pass
-        if manual_monthly_spend is None:
-            manual_monthly_spend = 3500.0  # Default fallback
+        manual_monthly_spend = _parse_monthly_spend(raw_spend)
 
         # Get duration (hours per session) safely
         duration_answer = answers.get("duration")
@@ -442,7 +449,7 @@ class ROIService:
         budget_reason = None
 
         if monthly_spend:
-            budget_mid = SPEND_MAP.get(monthly_spend, 3500.0)
+            budget_mid = _parse_monthly_spend(monthly_spend)
 
             if robot_monthly_lease <= budget_mid * 0.5:
                 # Robot is well under budget - good value
@@ -467,6 +474,22 @@ class ROIService:
                     factor="Budget Consideration",
                     explanation="Premium option with higher capabilities",
                     score_impact=5.0,
+                )
+            elif robot_monthly_lease <= budget_mid * 2.5:
+                # Robot is significantly over budget — penalty
+                budget_score = -15.0
+                budget_reason = RecommendationReason(
+                    factor="Over Budget",
+                    explanation="Costs significantly more than your current spend",
+                    score_impact=-15.0,
+                )
+            else:
+                # Robot is far over budget — larger penalty
+                budget_score = -25.0
+                budget_reason = RecommendationReason(
+                    factor="Over Budget",
+                    explanation="Costs much more than your current spend",
+                    score_impact=-25.0,
                 )
 
         if budget_reason:
