@@ -60,9 +60,9 @@ LLM_SCORING_SCHEMA = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "robot_id": {
-                                "type": "string",
-                                "description": "UUID of the robot being scored"
+                            "robot_index": {
+                                "type": "integer",
+                                "description": "1-based position index of the robot in the candidate list"
                             },
                             "match_score": {
                                 "type": "number",
@@ -105,7 +105,7 @@ LLM_SCORING_SCHEMA = {
                                 "description": "Reasons for this score"
                             }
                         },
-                        "required": ["robot_id", "match_score", "label", "summary", "reasons"],
+                        "required": ["robot_index", "match_score", "label", "summary", "reasons"],
                         "additionalProperties": False
                     }
                 }
@@ -191,7 +191,6 @@ def format_robots_context(robots: list[dict]) -> str:
     lines = []
 
     for i, robot in enumerate(robots, 1):
-        robot_id = str(robot.get("id", "unknown"))
         name = robot.get("name", "Unknown Robot")
         category = robot.get("category", "Robot")
         best_for = robot.get("best_for", "general use")
@@ -201,7 +200,7 @@ def format_robots_context(robots: list[dict]) -> str:
         time_efficiency = robot.get("time_efficiency", 0.8)
         key_reasons = robot.get("key_reasons", [])
 
-        lines.append(f"\n{i}. {name} (ID: {robot_id})")
+        lines.append(f"\n{i}. {name}")
         lines.append(f"   Category: {category}")
         lines.append(f"   Best For: {best_for}")
         lines.append(f"   Cleaning Modes: {', '.join(modes) if modes else 'N/A'}")

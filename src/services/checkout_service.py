@@ -131,9 +131,9 @@ class CheckoutService(BaseService):
         # Calculate total and select price based on payment type
         if payment_type == "purchase":
             price_value = robot.get("purchase_price", 0)
-            stripe_price_id = robot.get("stripe_purchase_price_id", "")
-            if not stripe_price_id:
-                raise ValueError("One-time purchase is not configured for this product")
+            if not price_value:
+                raise ValueError("Purchase price is not configured for this product")
+            stripe_price_id = None  # Will use price_data inline instead
         else:
             if not robot.get("stripe_lease_price_id"):
                 raise ValueError("Robot is not available for checkout — missing price configuration")
@@ -184,6 +184,13 @@ class CheckoutService(BaseService):
                 "payment_method_types": ["card", "us_bank_account"],
                 "line_items": [
                     {
+                        "price_data": {
+                            "currency": "usd",
+                            "unit_amount": total_cents,
+                            "product_data": {"name": robot["name"]},
+                        },
+                        "quantity": 1,
+                    } if payment_type == "purchase" else {
                         "price": stripe_price_id,
                         "quantity": 1,
                     }

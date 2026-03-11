@@ -373,6 +373,7 @@ class RobotCatalogService(BaseService):
             self.client.table("robot_catalog")
             .select("*")
             .eq("id", str(robot_id))
+            .eq("active", True)
             .maybe_single()
         )
         response = await self._execute_sync(query)
@@ -407,6 +408,7 @@ class RobotCatalogService(BaseService):
                     "active"
                 )
                 .eq("id", str(robot_id))
+                .eq("active", True)
                 .maybe_single()
             )
             response = await self._execute_sync(query)
@@ -455,6 +457,7 @@ class RobotCatalogService(BaseService):
             self.client.table("robot_catalog")
             .select("*")
             .in_("id", id_strings)
+            .eq("active", True)
         )
         response = await self._execute_sync(query)
 
