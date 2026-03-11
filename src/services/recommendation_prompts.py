@@ -15,10 +15,14 @@ SCORING CRITERIA (total 100 points):
    - Vacuum, mop, scrub, sweep capabilities
    - Multi-mode robots score higher for versatile needs
 
-3. Budget Alignment (0-20): How well the robot cost fits the customer's budget
-   - Robot cost ≤ 50% of budget = full points
-   - Robot cost ≤ budget = good score
-   - Robot cost > 150% of budget = minimal points
+3. Budget Alignment (0-20): How appropriate the robot's price tier is for this customer's spend level
+   - monthly_spend represents current cleaning LABOR cost — higher spend = facility justifies higher-tier robot
+   - Spend $10k+/month → robots $900+/month are the right fit (full points); cheap robots under-serve the facility
+   - Spend $5k–$10k/month → robots $600–$1,200/month are appropriate (full points)
+   - Spend $2k–$5k/month → robots $400–$700/month are well-suited (full points)
+   - Spend <$2k/month → robots <$500/month are appropriate (full points)
+   - Penalize significant under/over for the tier (e.g., $399 robot for a $10k/month facility = low score)
+   - Do NOT simply reward the cheapest option — reward the right tier for the spend level
 
 4. Operational Efficiency (0-15): Time savings and efficiency gains
    - Higher time_efficiency ratings score better

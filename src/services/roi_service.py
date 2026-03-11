@@ -36,7 +36,7 @@ SPEND_MAP: dict[str, float] = {
     "<$2,000": 1500.0,
     "$2,000 - $5,000": 3500.0,
     "$5,000 - $10,000": 7500.0,
-    "$10,000+": 20000.0,
+    "$10,000+": 12000.0,
 }
 
 # Duration mapping from discovery answer values to hours per session
@@ -54,6 +54,38 @@ FREQUENCY_MAP: dict[str, float] = {
     "Weekly": 4.0,
     "Other": 20.0,  # Default (assume ~5x/week)
 }
+
+# Industry benchmark monthly cleaning spend by facility type (amount, display label)
+# Used when the user hasn't provided their actual cleaning budget
+INDUSTRY_SPEND_BENCHMARKS: dict[str, tuple[float, str]] = {
+    "club": (2000.0, "club and recreation facilities"),
+    "pickleball": (2000.0, "pickleball and sports clubs"),
+    "tennis": (2000.0, "tennis and sports clubs"),
+    "restaurant": (1500.0, "restaurants"),
+    "retail": (2000.0, "retail locations"),
+    "warehouse": (6000.0, "warehouses and distribution centers"),
+    "datacenter": (4000.0, "data centers and office campuses"),
+    "healthcare": (8000.0, "healthcare facilities"),
+    "hospital": (8000.0, "hospitals and medical centers"),
+    "school": (3000.0, "schools and educational facilities"),
+    "university": (5000.0, "universities and campuses"),
+    "hotel": (5000.0, "hotels and hospitality venues"),
+    "office": (2500.0, "office buildings"),
+    "airport": (15000.0, "airports and transit facilities"),
+    "gym": (2500.0, "gyms and fitness centers"),
+    "fitness": (2500.0, "fitness centers"),
+}
+
+_DEFAULT_BENCHMARK: tuple[float, str] = (3000.0, "commercial facilities")
+
+
+def _get_benchmark_for_facility(company_type: str) -> tuple[float, str] | None:
+    """Return (monthly_spend, display_label) for a facility type, or None if unrecognized."""
+    lower = company_type.lower()
+    for keyword, benchmark in INDUSTRY_SPEND_BENCHMARKS.items():
+        if keyword in lower:
+            return benchmark
+    return None
 
 
 def _parse_monthly_spend(raw_spend: str) -> float | None:
@@ -74,7 +106,10 @@ def _parse_monthly_spend(raw_spend: str) -> float | None:
     if not raw_spend:
         return None
     lower = raw_spend.lower().strip()
-    if any(phrase in lower for phrase in ("don't know", "dont know", "not sure", "unknown", "no idea", "unsure")):
+    if any(
+        phrase in lower
+        for phrase in ("don't know", "dont know", "not sure", "unknown", "no idea", "unsure")
+    ):
         return None
 
     try:
@@ -178,28 +213,65 @@ class ROIService:
         # Calculate monthly hours = hours per session * sessions per month
         manual_monthly_hours = hours_per_session * sessions_per_month
 
-        # Scale by courts/area count if provided
-        courts_answer = answers.get("courts_count")
-        if courts_answer and isinstance(courts_answer, dict):
+        # Scale by number of cleaning staff if provided (duration/frequency is per-person)
+        staff_answer = answers.get("staff_count")
+        if staff_answer and isinstance(staff_answer, dict):
             try:
-                n = int(str(courts_answer.get("value", "1")).split()[0])
+                n = int(str(staff_answer.get("value", "1")).split()[0])
                 if n > 1:
                     manual_monthly_hours *= n
-                    if manual_monthly_spend is not None:
-                        manual_monthly_spend *= n
             except (ValueError, TypeError):
                 pass
 
-        # Derive spend from hours when unknown (hours × $20/hr labor rate)
+        # Parse user-provided hourly rate (e.g. "$35/hr", "35 dollars", "35")
+        hourly_rate = 20.0  # default
+        hourly_rate_answer = answers.get("hourly_rate")
+        if hourly_rate_answer and isinstance(hourly_rate_answer, dict):
+            raw_rate = str(hourly_rate_answer.get("value", ""))
+            # Extract numeric portion: strip $, /hr, "per hour", etc.
+            digits = "".join(c for c in raw_rate if c.isdigit() or c == ".")
+            try:
+                parsed = float(digits)
+                if parsed > 0:
+                    hourly_rate = parsed
+            except ValueError:
+                pass
+
+        # Resolve spend when not directly provided
+        benchmark_note: str | None = None
         if manual_monthly_spend is None:
-            manual_monthly_spend = manual_monthly_hours * 20.0
+            has_duration = bool(raw_duration and raw_duration != "Other")
+            has_frequency = bool(raw_frequency and raw_frequency != "Other")
+
+            if has_duration and has_frequency:
+                # User gave hours + frequency — derive using their hourly rate (default $20)
+                manual_monthly_spend = manual_monthly_hours * hourly_rate
+            else:
+                # Not enough data — fall back to facility-type benchmark
+                company_type_answer = answers.get("company_type")
+                raw_company_type = ""
+                if company_type_answer and isinstance(company_type_answer, dict):
+                    raw_company_type = str(company_type_answer.get("value", ""))
+
+                benchmark = _get_benchmark_for_facility(raw_company_type)
+                if benchmark is None:
+                    benchmark = _DEFAULT_BENCHMARK
+
+                benchmark_spend, benchmark_label = benchmark
+                manual_monthly_spend = benchmark_spend
+                formatted = f"${benchmark_spend:,.0f}"
+                benchmark_note = (
+                    f"Since you didn't share your cleaning budget, we're using industry benchmarks "
+                    f"for {benchmark_label}. Most spend around {formatted}/month on cleaning."
+                )
 
         return ROIInputs(
-            labor_rate=25.0,  # Default labor rate
+            labor_rate=hourly_rate,
             utilization=1.0,
             maintenance_factor=0.05,
             manual_monthly_spend=manual_monthly_spend,
             manual_monthly_hours=manual_monthly_hours,
+            benchmark_note=benchmark_note,
         )
 
     def calculate_roi(
@@ -293,6 +365,7 @@ class ROIService:
             confidence=confidence,
             algorithm_version=ALGORITHM_VERSION_MANUAL,
             factors_considered=factors_considered,
+            benchmark_note=inputs.benchmark_note,
         )
 
     def _determine_confidence(self, answers: dict[str, Any]) -> Literal["high", "medium", "low"]:
@@ -311,8 +384,10 @@ class ROIService:
         """
         roi_keys = ["monthly_spend", "frequency", "duration"]
         answered = sum(
-            1 for key in roi_keys
-            if key in answers and answers[key]
+            1
+            for key in roi_keys
+            if key in answers
+            and answers[key]
             and (answers[key].get("value") if isinstance(answers[key], dict) else answers[key])
         )
 
@@ -380,7 +455,7 @@ class ROIService:
             if not answer or not isinstance(answer, dict):
                 return ""
             return str(answer.get("value", ""))
-        
+
         company_type = get_answer_value("company_type").lower()
         method = get_answer_value("method").lower()
         courts_count = get_answer_value("courts_count")
@@ -475,46 +550,23 @@ class ROIService:
         if monthly_spend:
             budget_mid = _parse_monthly_spend(monthly_spend)
 
-            if robot_monthly_lease <= budget_mid * 0.5:
-                # Robot is well under budget - good value
-                budget_score = 15.0
-                budget_reason = RecommendationReason(
-                    factor="Budget Fit",
-                    explanation="Excellent value within your budget",
-                    score_impact=15.0,
-                )
-            elif robot_monthly_lease <= budget_mid:
-                # Robot is within budget
-                budget_score = 10.0
-                budget_reason = RecommendationReason(
-                    factor="Budget Fit",
-                    explanation="Fits within your current spend",
-                    score_impact=10.0,
-                )
-            elif robot_monthly_lease <= budget_mid * 1.5:
-                # Robot is slightly over budget
-                budget_score = 5.0
-                budget_reason = RecommendationReason(
-                    factor="Budget Consideration",
-                    explanation="Premium option with higher capabilities",
-                    score_impact=5.0,
-                )
-            elif robot_monthly_lease <= budget_mid * 2.5:
-                # Robot is significantly over budget — penalty
-                budget_score = -15.0
-                budget_reason = RecommendationReason(
-                    factor="Over Budget",
-                    explanation="Costs significantly more than your current spend",
-                    score_impact=-15.0,
-                )
-            else:
-                # Robot is far over budget — larger penalty
-                budget_score = -25.0
-                budget_reason = RecommendationReason(
-                    factor="Over Budget",
-                    explanation="Costs much more than your current spend",
-                    score_impact=-25.0,
-                )
+            if budget_mid is not None:
+                # Ideal: robot costs less than current spend (saves money)
+                if robot_monthly_lease < budget_mid:
+                    budget_score = 15.0
+                    budget_reason = RecommendationReason(
+                        factor="Budget Fit",
+                        explanation="Right tier for your facility spend level",
+                        score_impact=15.0,
+                    )
+                else:
+                    # Costs as much or more than current spend — no clear savings
+                    budget_score = -15.0
+                    budget_reason = RecommendationReason(
+                        factor="Over Budget",
+                        explanation="Costs significantly more than your current spend",
+                        score_impact=-15.0,
+                    )
 
         if budget_reason:
             score += budget_score
@@ -525,11 +577,13 @@ class ROIService:
         if time_efficiency >= 0.85:
             efficiency_score = 10.0
             score += efficiency_score
-            reasons.append(RecommendationReason(
-                factor="Efficiency",
-                explanation="High time efficiency rating",
-                score_impact=efficiency_score,
-            ))
+            reasons.append(
+                RecommendationReason(
+                    factor="Efficiency",
+                    explanation="High time efficiency rating",
+                    score_impact=efficiency_score,
+                )
+            )
 
         # Clamp score to 0-100
         score = max(0.0, min(100.0, score))
@@ -666,7 +720,8 @@ class ROIService:
         # Filter out non-cleaning robots (material handling, etc.)
         _CLEANING_MODES = {"vacuum", "sweep", "mop", "scrub", "clean", "scrubber", "disinfect"}
         cleaning_robots = [
-            r for r in robots
+            r
+            for r in robots
             if "cleaning" in r.get("category", "").lower()
             or "scrubber" in r.get("category", "").lower()
             or "vacuum" in r.get("category", "").lower()
@@ -721,7 +776,11 @@ class ROIService:
 
             # Parse image URLs from comma-separated string
             raw_image_url = robot.get("image_url", "")
-            image_urls = [url.strip() for url in raw_image_url.split(",") if url.strip()] if raw_image_url else []
+            image_urls = (
+                [url.strip() for url in raw_image_url.split(",") if url.strip()]
+                if raw_image_url
+                else []
+            )
 
             recommendation = RobotRecommendation(
                 robot_id=robot_id,
@@ -751,7 +810,11 @@ class ROIService:
         for robot, score, _ in remaining_robots:
             # Parse image URLs
             raw_image_url = robot.get("image_url", "")
-            image_urls = [url.strip() for url in raw_image_url.split(",") if url.strip()] if raw_image_url else []
+            image_urls = (
+                [url.strip() for url in raw_image_url.split(",") if url.strip()]
+                if raw_image_url
+                else []
+            )
 
             # Safely convert robot ID to UUID
             robot_id_str = robot.get("id")

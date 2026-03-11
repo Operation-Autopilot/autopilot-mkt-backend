@@ -1,6 +1,11 @@
 <script setup>
-import { data } from '../../loaders/product-hierarchy.data.js'
+import { computed } from 'vue'
+import { data as staticData } from '../../loaders/product-hierarchy.data.js'
 import { withBase } from 'vitepress'
+import { useDmmsData } from '../composables/useDmmsData.js'
+
+const { data: liveData, isLive } = useDmmsData('hierarchy', staticData)
+const hierarchy = computed(() => isLive.value ? liveData.value : staticData)
 
 function progressPercent(completed, total) {
   if (!total) return 0
@@ -9,8 +14,8 @@ function progressPercent(completed, total) {
 </script>
 
 <template>
-  <div class="product-hierarchy" v-if="data.products.length">
-    <div v-for="product in data.products" :key="product.id" class="hierarchy-product">
+  <div class="product-hierarchy" v-if="hierarchy.products.length">
+    <div v-for="product in hierarchy.products" :key="product.id" class="hierarchy-product">
       <details open>
         <summary class="hierarchy-summary product-summary">
           <span class="hierarchy-icon">&#x1F680;</span>
@@ -65,11 +70,11 @@ function progressPercent(completed, total) {
     </div>
 
     <div class="hierarchy-stats">
-      <a class="stat-pill" :href="withBase('/status/sprints')"><strong>{{ data.stats.totalTasks }}</strong> tasks</a>
-      <a class="stat-pill" :href="withBase('/status/sprints')"><strong>{{ data.stats.completedTasks }}</strong> completed</a>
-      <a class="stat-pill" :href="withBase('/status/roadmap')"><strong>{{ data.stats.totalFeatures }}</strong> features</a>
-      <a class="stat-pill" :href="withBase('/status/issues')"><strong>{{ data.stats.totalIssues }}</strong> issues tracked</a>
-      <a class="stat-pill" :href="withBase('/status/issues')"><strong>{{ data.stats.resolvedIssues }}</strong> resolved</a>
+      <a class="stat-pill" :href="withBase('/status/sprints')"><strong>{{ hierarchy.stats.totalTasks }}</strong> tasks</a>
+      <a class="stat-pill" :href="withBase('/status/sprints')"><strong>{{ hierarchy.stats.completedTasks }}</strong> completed</a>
+      <a class="stat-pill" :href="withBase('/status/roadmap')"><strong>{{ hierarchy.stats.totalFeatures }}</strong> features</a>
+      <a class="stat-pill" :href="withBase('/status/issues')"><strong>{{ hierarchy.stats.totalIssues }}</strong> issues tracked</a>
+      <a class="stat-pill" :href="withBase('/status/issues')"><strong>{{ hierarchy.stats.resolvedIssues }}</strong> resolved</a>
     </div>
   </div>
   <div v-else class="hierarchy-empty">

@@ -253,6 +253,34 @@ class ProfileExtractionService:
         if session_id:
             from src.schemas.session import ROIInputsSchema, SessionUpdate
 
+            # Check if session was claimed while extraction was in-flight.
+            # If so, redirect the write to the user's discovery profile instead
+            # of the now-orphaned sessions row.
+            session = await self.session_service.get_session_by_id(session_id)
+            if session and session.get("claimed_by_profile_id"):
+                from src.schemas.discovery import DiscoveryProfileUpdate
+
+                claimed_profile_id = UUID(str(session["claimed_by_profile_id"]))
+                profile_update = DiscoveryProfileUpdate(answers=answers)
+                if roi_inputs:
+                    valid_roi = {
+                        k: v
+                        for k, v in roi_inputs.items()
+                        if k in ("laborRate", "manualMonthlySpend", "manualMonthlyHours")
+                        and v is not None
+                    }
+                    if valid_roi:
+                        full_roi = {
+                            "laborRate": valid_roi.get("laborRate", 0),
+                            "utilization": 0.8,
+                            "maintenanceFactor": 0.1,
+                            "manualMonthlySpend": valid_roi.get("manualMonthlySpend", 0),
+                            "manualMonthlyHours": valid_roi.get("manualMonthlyHours", 0),
+                        }
+                        profile_update.roi_inputs = ROIInputsSchema(**full_roi)
+                await self.discovery_profile_service.update(claimed_profile_id, profile_update)
+                return
+
             update_data = SessionUpdate(answers=answers)
             if roi_inputs:
                 # Filter to only valid ROI fields
