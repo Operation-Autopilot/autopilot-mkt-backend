@@ -28,14 +28,18 @@ from src.schemas.roi import (
 from src.services.rag_service import RAGService, get_rag_service
 from src.services.recommendation_cache import get_recommendation_cache
 from src.services.recommendation_prompts import (
+    LLM_SCORING_SCHEMA,
+    SCORING_SYSTEM_PROMPT,
+    SCORING_USER_PROMPT_TEMPLATE,
     format_discovery_context,
+    format_robots_context,
 )
 from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
 
-# Algorithm version — 3.0 = deterministic scoring + semantic boost + optional LLM summaries
-ALGORITHM_VERSION = "3.0.0"
+# Algorithm version — 4.0 = LLM scoring (index-based) + deterministic fallback
+ALGORITHM_VERSION = "4.0.0"
 
 # Maximum score boost from semantic similarity (0-15 points out of 100)
 SEMANTIC_BOOST_MAX = 15.0
@@ -163,23 +167,30 @@ class RecommendationService:
                 logger.warning("No semantic candidates found, falling back to manual")
                 return await self._fallback_to_manual(request)
 
-            # Step 3: Score candidates deterministically
-            scored = self._score_candidates_deterministic(candidates, request.answers)
-
-            if not scored:
-                logger.warning("No scored candidates, falling back to manual")
-                return await self._fallback_to_manual(request)
-
-            # Step 4: Optionally enrich top-K with LLM summaries
-            scored = await self._enrich_with_llm_summaries(
-                scored_candidates=scored,
+            # Step 3: Score candidates with LLM (index-based, no UUIDs in prompt)
+            scored = await self._score_with_llm(
+                candidates=candidates,
                 discovery_context=discovery_context,
-                top_k=request.top_k,
                 session_id=session_id,
                 profile_id=profile_id,
             )
 
-            # Step 5: Build response with ROI
+            if scored is None:
+                # Fallback: deterministic scoring + optional LLM summaries
+                logger.info("LLM scoring unavailable, using deterministic fallback")
+                scored = self._score_candidates_deterministic(candidates, request.answers)
+                if not scored:
+                    logger.warning("No scored candidates, falling back to manual")
+                    return await self._fallback_to_manual(request)
+                scored = await self._enrich_with_llm_summaries(
+                    scored_candidates=scored,
+                    discovery_context=discovery_context,
+                    top_k=request.top_k,
+                    session_id=session_id,
+                    profile_id=profile_id,
+                )
+
+            # Step 4: Build response with ROI
             response = self._build_response(scored, candidates, request)
 
             # Cache the response
@@ -239,6 +250,117 @@ class RecommendationService:
             logger.error("Error getting semantic candidates: %s", str(e))
             robots = await self.robot_catalog.list_robots(active_only=True)
             return robots[:max_candidates]
+
+    async def _score_with_llm(
+        self,
+        candidates: list[dict[str, Any]],
+        discovery_context: str,
+        session_id: UUID | None = None,
+        profile_id: UUID | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Score candidates using LLM with positional indices instead of UUIDs.
+
+        The LLM receives numbered robots (1, 2, 3...) and returns robot_index
+        integers. We resolve back to actual robots by position — no UUID ever
+        enters the LLM prompt.
+
+        Returns:
+            Scored and sorted list, or None if LLM is disabled/fails/budget exceeded.
+        """
+        if not self.settings.use_llm_recommendations:
+            return None
+
+        robots_context = format_robots_context(candidates)
+        user_prompt = SCORING_USER_PROMPT_TEMPLATE.format(
+            discovery_context=discovery_context,
+            robots_context=robots_context,
+        )
+
+        # Check token budget
+        budget_key: str | None = None
+        is_authenticated = False
+        if profile_id:
+            budget_key = f"user:{profile_id}"
+            is_authenticated = True
+        elif session_id:
+            budget_key = f"session:{session_id}"
+
+        if budget_key:
+            try:
+                token_budget = get_token_budget()
+                estimated_tokens = len(user_prompt) // 4 + 800
+                allowed, _remaining, _limit = await token_budget.check_budget(
+                    budget_key, estimated_tokens, is_authenticated
+                )
+                if not allowed:
+                    logger.info("Token budget exceeded for LLM scoring, using deterministic")
+                    return None
+            except Exception:
+                pass
+
+        try:
+            response = await self.client.chat.create(
+                model=self.settings.openai_model_scoring,
+                messages=[
+                    {"role": "system", "content": SCORING_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format=LLM_SCORING_SCHEMA,
+                max_completion_tokens=1500,
+                temperature=0.3,
+            )
+
+            if budget_key and response.usage:
+                token_budget = get_token_budget()
+                await token_budget.record_usage(budget_key, response.usage.total_tokens)
+
+            result = json.loads(response.choices[0].message.content or "{}")
+            scored_robots = result.get("scored_robots", [])
+
+            if not scored_robots:
+                return None
+
+            scored: list[dict[str, Any]] = []
+            for item in scored_robots:
+                robot_index = item.get("robot_index")
+                if robot_index is None:
+                    continue
+                try:
+                    robot = candidates[robot_index - 1]
+                except IndexError:
+                    logger.warning(
+                        "robot_index %d out of range (len=%d)", robot_index, len(candidates)
+                    )
+                    continue
+
+                reasons = [
+                    RecommendationReason(
+                        factor=r.get("factor", "Match"),
+                        explanation=r.get("explanation", ""),
+                        score_impact=r.get("score_impact", 0),
+                    )
+                    for r in item.get("reasons", [])
+                ]
+
+                scored.append({
+                    "robot_id": str(robot.get("id")),
+                    "_robot_name": robot.get("name", "Unknown"),
+                    "match_score": round(float(item.get("match_score", 0)), 1),
+                    "label": item.get("label", "ALTERNATIVE"),
+                    "summary": item.get("summary", "A suitable option for your needs."),
+                    "reasons": reasons,
+                })
+
+            scored.sort(key=lambda x: x["match_score"], reverse=True)
+            logger.info("LLM scored %d robots", len(scored))
+            return scored if scored else None
+
+        except (OpenAIError, json.JSONDecodeError, TokenBudgetError) as e:
+            logger.warning("LLM scoring failed, using deterministic: %s", str(e))
+            return None
+        except Exception as e:
+            logger.warning("Unexpected error in LLM scoring: %s", str(e))
+            return None
 
     def _score_candidates_deterministic(
         self,
@@ -512,7 +634,7 @@ class RecommendationService:
                         reasons=reasons,
                         summary=s.get("summary", "A suitable option for your needs."),
                         projected_roi=roi,
-                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else None,
+                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else float(robot.get("monthly_lease", 0)) * 36 or None,
                         best_for=robot.get("best_for"),
                         modes=robot.get("modes", []),
                         surfaces=robot.get("surfaces", []),
@@ -532,7 +654,7 @@ class RecommendationService:
                         time_efficiency=float(robot.get("time_efficiency", 0.8)),
                         image_urls=image_urls,
                         match_score=s["match_score"],
-                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else None,
+                        purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else float(robot.get("monthly_lease", 0)) * 36 or None,
                         best_for=robot.get("best_for"),
                         modes=robot.get("modes", []),
                         surfaces=robot.get("surfaces", []),
@@ -542,7 +664,7 @@ class RecommendationService:
                 )
 
         # Include any candidates that the LLM didn't score as other_options
-        scored_ids = {s.get("robot_id") for s in scored_robots}
+        scored_ids = {s.get("robot_id") for s in scored}
         for cand_id_str, robot in candidate_map.items():
             if cand_id_str in scored_ids:
                 continue

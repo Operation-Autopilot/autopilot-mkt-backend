@@ -53,7 +53,10 @@ IMPORTANT:
 - Restrooms are ALWAYS excluded from robot cleaning (manual cleaning only)
 - Mechanical/utility rooms are ALWAYS excluded
 - Buffer zones between courts follow CIRCULATION cleaning schedule, not court schedule
-- The hexagonal pattern in drawings typically indicates rubber tile flooring (circulation areas)"""
+- The hexagonal pattern in drawings typically indicates rubber tile flooring (circulation areas)
+
+VALIDATION:
+- If the image does NOT appear to be an architectural floor plan, blueprint, or layout drawing (e.g., it is a photograph of a room, a person, an object, outdoor scenery, or any non-architectural image), set is_floor_plan to false in your response and do NOT attempt any size estimation or zone analysis."""
 
 # User prompt template
 FLOOR_PLAN_ANALYSIS_USER_PROMPT = """Analyze this floor plan image and extract all relevant features for robotic cleaning cost estimation.
@@ -283,6 +286,10 @@ FLOOR_PLAN_EXTRACTION_SCHEMA = {
                     "type": "string",
                     "description": "Notes about assumptions or unclear elements in the floor plan",
                 },
+                "is_floor_plan": {
+                    "type": "boolean",
+                    "description": "True if the image is an architectural floor plan or layout drawing; false if it is a photograph or non-architectural image",
+                },
             },
             "required": [
                 "facility_dimensions",
@@ -294,6 +301,7 @@ FLOOR_PLAN_EXTRACTION_SCHEMA = {
                 "obstructions",
                 "summary",
                 "extraction_notes",
+                "is_floor_plan",
             ],
             "additionalProperties": False,
         },

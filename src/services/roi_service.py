@@ -36,7 +36,7 @@ SPEND_MAP: dict[str, float] = {
     "<$2,000": 1500.0,
     "$2,000 - $5,000": 3500.0,
     "$5,000 - $10,000": 7500.0,
-    "$10,000+": 12000.0,
+    "$10,000+": 20000.0,
 }
 
 # Duration mapping from discovery answer values to hours per session
@@ -56,11 +56,13 @@ FREQUENCY_MAP: dict[str, float] = {
 }
 
 
-def _parse_monthly_spend(raw_spend: str) -> float:
+def _parse_monthly_spend(raw_spend: str) -> float | None:
     """Parse a monthly spend string to a float.
 
     Handles both preset option strings (from SPEND_MAP) and custom typed
     values like "3000", "$3,000", "3.5k", "3500/month", "around $4,000".
+    Returns None when the spend is unknown/vague so callers can derive it
+    from other answers instead of silently using a $3,500 default.
     """
     import re
 
@@ -68,20 +70,26 @@ def _parse_monthly_spend(raw_spend: str) -> float:
     if result is not None:
         return result
 
-    if raw_spend:
-        try:
-            cleaned = raw_spend.lower().replace(",", "").replace("$", "").strip()
-            for suffix in ("/month", "per month", "monthly", "/mo"):
-                cleaned = cleaned.replace(suffix, "").strip()
-            if cleaned.endswith("k"):
-                return float(cleaned[:-1]) * 1000
-            match = re.search(r"\d+(?:\.\d+)?", cleaned)
-            if match:
-                return float(match.group())
-        except (ValueError, AttributeError):
-            pass
+    # Treat explicit "unknown"/"don't know" answers as None
+    if not raw_spend:
+        return None
+    lower = raw_spend.lower().strip()
+    if any(phrase in lower for phrase in ("don't know", "dont know", "not sure", "unknown", "no idea", "unsure")):
+        return None
 
-    return 3500.0  # Default
+    try:
+        cleaned = lower.replace(",", "").replace("$", "")
+        for suffix in ("/month", "per month", "monthly", "/mo"):
+            cleaned = cleaned.replace(suffix, "").strip()
+        if cleaned.endswith("k"):
+            return float(cleaned[:-1]) * 1000
+        match = re.search(r"\d+(?:\.\d+)?", cleaned)
+        if match:
+            return float(match.group())
+    except (ValueError, AttributeError):
+        pass
+
+    return None  # Unknown — let caller derive from hours × rate
 
 
 class ROIService:
@@ -120,7 +128,7 @@ class ROIService:
             raw_spend = str(monthly_spend_answer.get("value", ""))
         else:
             raw_spend = ""
-        manual_monthly_spend = _parse_monthly_spend(raw_spend)
+        manual_monthly_spend: float | None = _parse_monthly_spend(raw_spend)
 
         # Get duration (hours per session) safely
         duration_answer = answers.get("duration")
@@ -169,6 +177,22 @@ class ROIService:
 
         # Calculate monthly hours = hours per session * sessions per month
         manual_monthly_hours = hours_per_session * sessions_per_month
+
+        # Scale by courts/area count if provided
+        courts_answer = answers.get("courts_count")
+        if courts_answer and isinstance(courts_answer, dict):
+            try:
+                n = int(str(courts_answer.get("value", "1")).split()[0])
+                if n > 1:
+                    manual_monthly_hours *= n
+                    if manual_monthly_spend is not None:
+                        manual_monthly_spend *= n
+            except (ValueError, TypeError):
+                pass
+
+        # Derive spend from hours when unknown (hours × $20/hr labor rate)
+        if manual_monthly_spend is None:
+            manual_monthly_spend = manual_monthly_hours * 20.0
 
         return ROIInputs(
             labor_rate=25.0,  # Default labor rate
@@ -640,12 +664,13 @@ class ROIService:
         robots = await self.robot_catalog.list_robots(active_only=True)
 
         # Filter out non-cleaning robots (material handling, etc.)
+        _CLEANING_MODES = {"vacuum", "sweep", "mop", "scrub", "clean", "scrubber", "disinfect"}
         cleaning_robots = [
             r for r in robots
             if "cleaning" in r.get("category", "").lower()
             or "scrubber" in r.get("category", "").lower()
             or "vacuum" in r.get("category", "").lower()
-            or r.get("modes", [])  # Has cleaning modes
+            or any(m.lower() in _CLEANING_MODES for m in r.get("modes", []))
         ]
 
         # If no cleaning robots found, use all robots

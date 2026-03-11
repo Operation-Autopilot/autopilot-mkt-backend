@@ -465,6 +465,13 @@ class FloorPlanService(BaseService):
         except json.JSONDecodeError as e:
             raise FloorPlanAnalysisError(f"Failed to parse GPT-4o response: {e}") from e
 
+        # Reject non-floor-plan images early
+        if not data.get("is_floor_plan", True):
+            raise FloorPlanAnalysisError(
+                "Please upload an architectural floor plan or layout drawing. "
+                "The uploaded image does not appear to be a floor plan."
+            )
+
         # Convert to Pydantic model
         features = self._parse_extracted_features(data)
 
