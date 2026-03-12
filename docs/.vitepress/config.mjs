@@ -103,6 +103,7 @@ export default defineConfig({
             { text: 'Backend Tests', link: '/testing/backend' },
             { text: 'Frontend Tests', link: '/testing/frontend' },
             { text: 'Patterns', link: '/testing/patterns' },
+            { text: 'End-User Scripts', link: '/testing/end-user-scripts' },
           ],
         },
       ],

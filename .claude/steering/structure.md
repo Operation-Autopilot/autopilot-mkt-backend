@@ -101,6 +101,7 @@ autopilot-mkt-backend/
 │   ├── stripe_dev.sh
 │   ├── sync_stripe_products.py
 │   ├── update-steering.mjs
+│   ├── upload_new_images.py
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
 └── supabase/migrations/  (25 files)
