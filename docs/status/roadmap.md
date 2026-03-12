@@ -68,3 +68,12 @@ title: Roadmap
 ### Infrastructure
 - 🔲 Supabase Realtime for concurrent session sync
 - 🔲 Multi-worker webhook replay prevention (current: in-memory, per-worker only)
+
+### 3D Visualization
+- 🔲 Finalize 3D model generation pipeline for robot catalog
+- 🔲 Interactive 3D rendering in robot detail view (WebGL/Three.js)
+
+### Admin Portal — OperationAutopilot
+- 🔲 Test admin portal for operationautopilot domains
+- 🔲 Import customer details to auto-fill discovery form
+- 🔲 Integrate admin portal with marketplace to automate procurement process

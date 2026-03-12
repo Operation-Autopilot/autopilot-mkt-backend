@@ -1,6 +1,17 @@
 <script setup>
+import { ref } from 'vue'
 import { useDmmsData } from '../composables/useDmmsData.js'
 const { data, loading, error, reload } = useDmmsData('issues')
+const expanded = ref(new Set())
+
+function toggle(id) {
+  if (expanded.value.has(id)) {
+    expanded.value.delete(id)
+  } else {
+    expanded.value.add(id)
+  }
+  expanded.value = new Set(expanded.value)
+}
 </script>
 
 <template>
@@ -27,13 +38,21 @@ const { data, loading, error, reload } = useDmmsData('issues')
         <tr><th>ID</th><th>Title</th><th>Severity</th><th>Category</th><th>Files</th></tr>
       </thead>
       <tbody>
-        <tr v-for="r in data.openRows" :key="r.id">
-          <td>{{ r.id }}</td>
-          <td>{{ r.title }}</td>
-          <td><span :class="'badge-' + r.severity">{{ r.severity }}</span></td>
-          <td>{{ r.category }}</td>
-          <td>{{ r.files || '--' }}</td>
-        </tr>
+        <template v-for="r in data.openRows" :key="r.id">
+          <tr :class="{ 'row-clickable': r.description }" @click="r.description && toggle(r.id)">
+            <td>{{ r.id }}</td>
+            <td>
+              {{ r.title }}
+              <span v-if="r.description" class="expand-hint">{{ expanded.has(r.id) ? '▾' : '▸' }}</span>
+            </td>
+            <td><span :class="'badge-' + r.severity">{{ r.severity }}</span></td>
+            <td>{{ r.category }}</td>
+            <td>{{ r.files || '--' }}</td>
+          </tr>
+          <tr v-if="expanded.has(r.id) && r.description" class="desc-row">
+            <td colspan="5" class="desc-content">{{ r.description }}</td>
+          </tr>
+        </template>
       </tbody>
     </table>
 
@@ -45,13 +64,21 @@ const { data, loading, error, reload } = useDmmsData('issues')
           <tr><th>ID</th><th>Title</th><th>Severity</th><th>Category</th><th>Files</th></tr>
         </thead>
         <tbody>
-          <tr v-for="r in data.resolvedRows" :key="r.id">
-            <td>{{ r.id }}</td>
-            <td>{{ r.title }}</td>
-            <td><span :class="'badge-' + r.severity">{{ r.severity }}</span></td>
-            <td>{{ r.category }}</td>
-            <td>{{ r.files || '--' }}</td>
-          </tr>
+          <template v-for="r in data.resolvedRows" :key="r.id">
+            <tr :class="{ 'row-clickable': r.description }" @click="r.description && toggle('r_' + r.id)">
+              <td>{{ r.id }}</td>
+              <td>
+                {{ r.title }}
+                <span v-if="r.description" class="expand-hint">{{ expanded.has('r_' + r.id) ? '▾' : '▸' }}</span>
+              </td>
+              <td><span :class="'badge-' + r.severity">{{ r.severity }}</span></td>
+              <td>{{ r.category }}</td>
+              <td>{{ r.files || '--' }}</td>
+            </tr>
+            <tr v-if="expanded.has('r_' + r.id) && r.description" class="desc-row">
+              <td colspan="5" class="desc-content">{{ r.description }}</td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </details>
@@ -71,4 +98,8 @@ const { data, loading, error, reload } = useDmmsData('issues')
 .dmms-table th, .dmms-table td { text-align: left; padding: 0.5rem 0.75rem; border: 1px solid var(--vp-c-divider); }
 .dmms-table th { background: var(--vp-c-bg-alt); font-weight: 600; }
 .dmms-table tr:hover td { background: var(--vp-c-bg-soft); }
+.row-clickable { cursor: pointer; }
+.expand-hint { color: var(--vp-c-text-3); font-size: 0.75rem; margin-left: 0.35rem; }
+.desc-row td { background: var(--vp-c-bg-soft); }
+.desc-content { white-space: pre-wrap; font-size: 0.8125rem; color: var(--vp-c-text-2); line-height: 1.5; padding: 0.75rem 0.75rem 0.75rem 1.5rem; border-left: 3px solid var(--vp-c-brand-1); }
 </style>

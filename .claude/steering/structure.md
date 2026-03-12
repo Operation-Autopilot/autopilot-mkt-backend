@@ -86,6 +86,7 @@ autopilot-mkt-backend/
 │   ├── supabase.py
 │   ├── token_budget.py
 ├── scripts/
+│   ├── debug_conversations.py
 │   ├── deploy-cloud-run.sh
 │   ├── dev-server.sh
 │   ├── e2e_stripe_test.py
@@ -102,8 +103,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (24 files)
-    └── ...024_court_type_surfaces.sql  ← last applied
+└── supabase/migrations/  (25 files)
+    └── ...025_mt1_vac_image_updates.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -303,4 +304,5 @@ class {Resource}Response({Resource}Base):
 - `022_robot_image_updates.sql` — 022_robot_image_updates.sql
 - `023_add_test_robot.sql` — 023_add_test_robot.sql
 - `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
+- `025_mt1_vac_image_updates.sql` — MT1 Vac image corrections
 <!-- AUTO-MIGRATIONS:END -->
