@@ -101,7 +101,7 @@ async def list_robots(
     )
 
     # Get filtered robots
-    robots, total = await service.list_robots_filtered(filters, active_only=True)
+    robots, total = await service.list_robots_filtered(filters, active_only=False)
 
     return RobotListResponse(
         items=[RobotResponse(**robot) for robot in robots],

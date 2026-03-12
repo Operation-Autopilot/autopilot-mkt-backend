@@ -12,8 +12,8 @@ Comprehensive analysis of all known bugs across git history, frontend code, and 
   <div class="stat-card"><div class="stat-value">20</div><div class="stat-label">High</div></div>
   <div class="stat-card"><div class="stat-value">27</div><div class="stat-label">Medium</div></div>
   <div class="stat-card"><div class="stat-value">8</div><div class="stat-label">Low</div></div>
-  <div class="stat-card"><div class="stat-value">21</div><div class="stat-label">Resolved</div></div>
-  <div class="stat-card"><div class="stat-value">39</div><div class="stat-label">Open</div></div>
+  <div class="stat-card"><div class="stat-value">25</div><div class="stat-label">Resolved</div></div>
+  <div class="stat-card"><div class="stat-value">35</div><div class="stat-label">Open</div></div>
 </div>
 
 → See **[Issues Tracker](./issues.md)** for the full bug registry with live status.
@@ -52,10 +52,11 @@ This audit organizes bugs by the user journey they break, not the file they live
     ↓
 [ROI page loads — recommendations ranked]
     ├── B-02 ✅ FIXED: wrong robot recommended for <$2k spend
+    ├── B-03 ✅ FIXED: unknown spend → $0 ROI (now uses hourly rate / facility benchmarks)
     ├── B-01 ❌ OPEN: robot at exact budget midpoint penalized (-15)
-    ├── B-07 ❌ OPEN: robots silently dropped on UUID parse failure
+    ├── B-07 ✅ FIXED: robots silently dropped on UUID parse failure
     ├── F-02 ❌ OPEN: ROI value race condition (two concurrent fetches)
-    ├── F-03 ❌ OPEN: coverageRate null crash on robot card
+    ├── F-03 ✅ FIXED: coverageRate null crash (transformer always returns number)
     ↓
 [Top robot auto-selected (lime ring)]
     ├── C-01 ✅ FIXED: stale robot from prior session shown instead
@@ -81,19 +82,19 @@ This audit organizes bugs by the user journey they break, not the file they live
     ├── C-05 ✅ FIXED: company null if API response missing company_id
     ↓
 [Session claimed → discovery data transferred]
-    ├── C-07 ❌ OPEN: extraction races claim → data saved to wrong record
+    ├── C-07 ✅ FIXED: extraction races claim (atomic signup + inline extraction + redirect guard)
     ├── C-08 ❌ OPEN: conversation transfer unverified (silent failure)
-    ├── E-10 ❌ OPEN: background extraction updates anonymous session post-claim
+    ├── E-10 ✅ FIXED: background extraction updates anonymous session post-claim
     ↓
 [Returned to correct phase]
     ↓
 [Selects payment method, clicks checkout]
     ├── D-01 ❌ OPEN: Stripe double-submit (two rapid clicks)
-    ├── D-02 ❌ OPEN: auth race → checkout never fires after signup
+    ├── D-02 ✅ FIXED: auth race → checkout never fires after signup
     ├── D-07 ❌ OPEN: monthly lease (card) checkout disabled
     ↓
 [Redirected to Stripe / Gynger]
-    ├── A-02 ❌ OPEN: anonymous checkout may use wrong Stripe env
+    ├── A-02 ✅ FIXED: anonymous checkout may use wrong Stripe env
     ↓
 [Returns to /checkout/success]
     └── Confirmation shown ✅
@@ -110,7 +111,7 @@ This audit organizes bugs by the user journey they break, not the file they live
     ↓
 [Logs back in]
     ├── C-02 ✅ FIXED: chat history not restored after re-login
-    ├── C-12 ❌ OPEN: login fails if discovery profile doesn't exist
+    ├── C-12 ✅ FIXED: login fails if discovery profile doesn't exist
     ↓
 [Previous session loaded — answers appear]
     ├── C-13 ❌ OPEN: session cache written to stale auth key
@@ -181,7 +182,7 @@ This audit organizes bugs by the user journey they break, not the file they live
 | ID | Title | Sev | Status |
 |----|-------|-----|--------|
 | A-01 | Session claim no ownership validation | <span class="badge-critical">critical</span> | <span class="badge-open">open</span> |
-| A-02 | is_test_account=None → wrong Stripe env | <span class="badge-critical">critical</span> | <span class="badge-open">open</span> |
+| A-02 | is_test_account=None → wrong Stripe env | <span class="badge-critical">critical</span> | <span class="badge-completed">resolved</span> |
 | A-03 | Stripe webhook replay | <span class="badge-critical">critical</span> | <span class="badge-completed">resolved</span> |
 | A-04 | Mutable default BackgroundTasks | <span class="badge-critical">critical</span> | <span class="badge-completed">resolved</span> |
 | A-05 | DualAuth never rejects unauthenticated | <span class="badge-high">high</span> | <span class="badge-open">open</span> |
@@ -190,28 +191,28 @@ This audit organizes bugs by the user journey they break, not the file they live
 
 See [Issues Tracker](./issues.md) — filter category ROI.
 
-Key open items: dead `elif` in budget scoring (B-01), unknown spend shows $0 ROI (B-03), robot UUID drops silently (B-07).
+Key open items: dead `elif` in budget scoring (B-01). B-03 (unknown spend) and B-07 (UUID parse failure) resolved.
 
 ### C — Auth & Session Transitions (14 bugs)
 
-Largest category. 5 resolved from recent sessions, 9 still open.
+Largest category. 8 resolved (C-02, C-03, C-04, C-05, C-07, C-10, C-12 + auth token race), 6 still open.
 Key pattern: state scattered across backend, SessionContext, localStorage, and AuthContext — multiple sync points without clear ownership.
 
 ### D — Checkout & Payment (7 bugs)
 
-2 critical-adjacent: Stripe double-submit (D-01) and monthly lease disabled (D-07).
+D-02 (auth race on checkout) resolved. 2 still critical-adjacent: Stripe double-submit (D-01) and monthly lease disabled (D-07).
 
 ### E — Chat / Agent (12 bugs)
 
-3 high-severity recently resolved (greeting regeneration, 30s latency, extraction blocking). 9 remain open, mostly around state machine reliability.
+5 high-severity resolved (greeting regeneration, 30s latency, extraction blocking, background extraction race, inline extraction). 7 remain open, mostly around state machine reliability.
 
 ### F — Display (8 bugs)
 
-1 high-severity: `coverageRate` null crash (F-03). Rest are medium/low UX issues.
+F-03 (`coverageRate` null crash) resolved. Rest are medium/low UX issues.
 
 ### G — Infrastructure (4 bugs)
 
-All medium severity. Session expiry duplication, cache race, wrong message count, silent extraction failure.
+G-04 (silent extraction failures) resolved. 3 remain open: session expiry duplication (G-01), cache race (G-02), wrong message count (G-03).
 
 ---
 

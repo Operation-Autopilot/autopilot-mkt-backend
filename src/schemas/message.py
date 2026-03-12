@@ -65,6 +65,31 @@ class DiscoveryState(BaseModel):
     )
 
 
+class TeamMemberExtracted(BaseModel):
+    """A team member extracted from conversation."""
+
+    email: str = Field(description="Email address")
+    name: str | None = Field(default=None, description="Full name if provided")
+    role: str | None = Field(default=None, description="Role/title if provided")
+
+
+class GreenlightActions(BaseModel):
+    """Actions extracted from greenlight-phase conversation."""
+
+    team_members: list[TeamMemberExtracted] = Field(
+        default_factory=list,
+        description="Team members the user wants to invite"
+    )
+    target_start_date: str | None = Field(
+        default=None,
+        description="ISO 8601 date for target deployment start"
+    )
+    invitations_sent: list[str] = Field(
+        default_factory=list,
+        description="Emails for which invitations were successfully sent"
+    )
+
+
 class MessageWithAgentResponse(BaseModel):
     """Schema for message creation response including agent reply, chips, and discovery state."""
 
@@ -79,6 +104,10 @@ class MessageWithAgentResponse(BaseModel):
     discovery_state: DiscoveryState | None = Field(
         default=None,
         description="Discovery progress state (only present in discovery phase)"
+    )
+    greenlight_actions: GreenlightActions | None = Field(
+        default=None,
+        description="Greenlight actions extracted from conversation (only in greenlight phase)"
     )
 
 

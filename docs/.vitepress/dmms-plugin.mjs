@@ -86,11 +86,11 @@ function buildIssues(db) {
   const low = db.prepare("SELECT count(*) AS c FROM issues WHERE severity='low'").get().c
 
   const openRows = db.prepare(
-    "SELECT id, title, severity, category, files FROM issues WHERE status IN ('open','in_progress') ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id"
+    "SELECT id, title, severity, category, files, description FROM issues WHERE status IN ('open','in_progress') ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id"
   ).all()
 
   const resolvedRows = db.prepare(
-    "SELECT id, title, severity, category, files FROM issues WHERE status IN ('resolved','closed') ORDER BY id"
+    "SELECT id, title, severity, category, files, description FROM issues WHERE status IN ('resolved','closed') ORDER BY id"
   ).all()
 
   return { total, open, resolved, critical, high, medium, low, openRows, resolvedRows }

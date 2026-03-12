@@ -57,9 +57,14 @@ REQUIRED_QUESTIONS = [
         "chips": ["<4", "6", "8", "12+", "Other"],
     },
     {
+        "key": "surfaces",
+        "question": "What type of court surface do you have?",
+        "chips": ["CushionX", "Acrylic", "Concrete", "Hardwood", "Sport Court Vinyl", "Other"],
+    },
+    {
         "key": "method",
         "question": "What is your primary cleaning method today?",
-        "chips": ["Vacuum", "Sweep", "Mop", "Other"],
+        "chips": ["Vacuum", "Sweep", "Mop", "All"],
     },
     {
         "key": "frequency",

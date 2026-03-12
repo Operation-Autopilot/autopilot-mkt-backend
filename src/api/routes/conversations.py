@@ -15,15 +15,18 @@ from src.schemas.conversation import (
 from src.models.conversation import ConversationPhase
 from src.schemas.message import (
     DiscoveryState,
+    GreenlightActions,
     MessageCreate,
     MessageListResponse,
     MessageWithAgentResponse,
+    TeamMemberExtracted,
 )
 from src.services.extraction_constants import REQUIRED_QUESTION_KEYS
 from src.services.agent_service import AgentService
 from src.services.company_service import CompanyService
 from src.services.conversation_service import ConversationService
 from src.services.discovery_profile_service import DiscoveryProfileService
+from src.services.greenlight_extraction_service import GreenlightExtractionService
 from src.services.profile_extraction_service import ProfileExtractionService
 from src.services.profile_service import ProfileService
 from src.services.session_service import SessionService
@@ -725,11 +728,85 @@ async def send_message(
     except Exception as e:
         logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
 
+    # Run greenlight extraction for GREENLIGHT phase to detect team invites + target dates
+    greenlight_actions: GreenlightActions | None = None
+    if phase == ConversationPhase.GREENLIGHT:
+        try:
+            gl_service = GreenlightExtractionService()
+            gl_result = await gl_service.extract_greenlight_actions(conversation_id)
+
+            extracted_members = gl_result.get("team_members", [])
+            extracted_date = gl_result.get("target_start_date")
+
+            if extracted_members or extracted_date:
+                invitations_sent: list[str] = []
+
+                # Persist to session greenlight data
+                session_service = SessionService()
+                if session_id:
+                    session_data = await session_service.get_session_by_id(session_id)
+                    current_gl = (session_data or {}).get("greenlight", {}) or {}
+
+                    updates: dict = {}
+                    if extracted_date:
+                        updates["targetStartDate"] = extracted_date
+
+                    if extracted_members:
+                        existing_members = current_gl.get("teamMembers", [])
+                        existing_emails = {m.get("email") for m in existing_members}
+                        new_members = [
+                            {"email": m["email"], "name": m.get("name"), "role": m.get("role")}
+                            for m in extracted_members
+                            if m["email"] not in existing_emails
+                        ]
+                        if new_members:
+                            updates["teamMembers"] = existing_members + new_members
+
+                    if updates:
+                        merged_gl = {**current_gl, **updates}
+                        await session_service.update_session(session_id, {"greenlight": merged_gl})
+
+                # Send invitations if user is authenticated with a company
+                if extracted_members and profile_id:
+                    try:
+                        company_service = CompanyService()
+                        company = await company_service.get_user_company(profile_id)
+                        if company:
+                            from src.schemas.company import InvitationCreate as InvCreate
+                            from src.services.invitation_service import InvitationService
+                            inv_service = InvitationService()
+                            for member in extracted_members:
+                                try:
+                                    await inv_service.create_invitation(
+                                        company_id=UUID(company["id"]),
+                                        data=InvCreate(email=member["email"]),
+                                        invited_by=profile_id,
+                                    )
+                                    invitations_sent.append(member["email"])
+                                except Exception as inv_err:
+                                    logger.warning(
+                                        "Failed to invite %s: %s", member["email"], inv_err
+                                    )
+                    except Exception as comp_err:
+                        logger.warning("Company lookup for invitations failed: %s", comp_err)
+
+                greenlight_actions = GreenlightActions(
+                    team_members=[TeamMemberExtracted(**m) for m in extracted_members],
+                    target_start_date=extracted_date,
+                    invitations_sent=invitations_sent,
+                )
+        except Exception as e:
+            logger.error(
+                "Greenlight extraction failed for conversation %s: %s",
+                conversation_id, e, exc_info=True,
+            )
+
     return MessageWithAgentResponse(
         user_message=user_message,
         agent_message=agent_message,
         chips=chips,
         discovery_state=discovery_state,
+        greenlight_actions=greenlight_actions,
     )
 
 
