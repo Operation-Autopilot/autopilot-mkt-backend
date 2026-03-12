@@ -174,7 +174,25 @@ class AuthService:
             "orders_transferred": 0,
         }
 
-        # Step 2: If no session token, return signup-only result
+        # Step 2: Login immediately after signup to get auth tokens.
+        # Email verification is disabled for this project, so sign_in_with_password
+        # succeeds right away and gives us the JWT the frontend needs.
+        try:
+            from src.core.supabase import create_auth_client
+            auth_client = create_auth_client()
+            login_response = auth_client.auth.sign_in_with_password(
+                {"email": email, "password": password}
+            )
+            if login_response.session:
+                result["access_token"] = login_response.session.access_token
+                result["refresh_token"] = login_response.session.refresh_token
+                result["expires_in"] = login_response.session.expires_in or 3600
+            else:
+                logger.warning("No session returned from post-signup login for %s", email)
+        except Exception as e:
+            logger.warning("Failed to get auth tokens after signup for %s: %s", email, e)
+
+        # Step 3: If no session token, return now (tokens already included above)
         if not session_token:
             return result
 
