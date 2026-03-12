@@ -106,8 +106,8 @@ autopilot-mkt-backend/
 │   ├── upload_new_images.py
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (25 files)
-    └── ...025_mt1_vac_image_updates.sql  ← last applied
+└── supabase/migrations/  (26 files)
+    └── ...026_company_scoped_discovery_profiles.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -308,4 +308,5 @@ class {Resource}Response({Resource}Base):
 - `023_add_test_robot.sql` — 023_add_test_robot.sql
 - `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
 - `025_mt1_vac_image_updates.sql` — MT1 Vac image corrections
+- `026_company_scoped_discovery_profiles.sql` — Make discovery profiles company-scoped
 <!-- AUTO-MIGRATIONS:END -->

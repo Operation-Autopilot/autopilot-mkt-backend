@@ -10,6 +10,7 @@ Webhook verification: Gynger sends Authorization: {webhook_secret}
 where webhook_secret is the 'secret' returned when registering the webhook.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -210,7 +211,6 @@ class GyngerService(BaseService):
         # HubSpot: move Lead deal to Closed Won (fire-and-forget)
         if new_order_status == "completed":
             try:
-                import asyncio
                 from src.core.config import get_settings as _gs
                 from src.services.hubspot_service import HubSpotService
                 if _gs().hubspot_access_token:
@@ -224,6 +224,42 @@ class GyngerService(BaseService):
                         )
             except Exception:
                 logger.exception("HubSpot task creation failed after Gynger approval (non-fatal)")
+
+            # Send order confirmation email (fire-and-forget)
+            customer_email = order.get("customer_email")
+            if customer_email:
+                try:
+                    from src.services.email_service import EmailService
+                    line_items = order.get("line_items") or []
+                    robot_name = line_items[0]["product_name"] if line_items else "Robot"
+                    total_cents = order.get("total_cents", 0)
+                    amount_display = f"${total_cents / 100:,.0f}"
+                    tsd = ""
+                    sid = order.get("session_id")
+                    if sid:
+                        try:
+                            sr = await self._execute_sync(
+                                self.client.table("sessions")
+                                .select("greenlight")
+                                .eq("id", sid)
+                                .maybe_single()
+                            )
+                            if sr.data:
+                                tsd = (sr.data.get("greenlight") or {}).get("target_start_date") or ""
+                        except Exception:
+                            pass
+                    asyncio.create_task(
+                        EmailService().send_order_confirmation_email(
+                            to_email=customer_email,
+                            robot_name=robot_name,
+                            amount_display=amount_display,
+                            payment_type="gynger",
+                            order_id=str(order.get("id", "")),
+                            target_start_date=tsd or None,
+                        )
+                    )
+                except Exception:
+                    logger.debug("Order confirmation email task creation failed (non-fatal)")
 
         return order
 

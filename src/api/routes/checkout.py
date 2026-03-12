@@ -205,12 +205,32 @@ async def create_gynger_session(
                 import logging as _log2
                 _log2.getLogger(__name__).debug("Could not resolve email from profile %s", profile_id)
 
+        # Load session data for HubSpot enrichment
+        session_answers: dict = {}
+        target_start_date = ""
+        if session_id:
+            try:
+                sess_row = await checkout_service._execute_sync(
+                    checkout_service.client.table("sessions")
+                    .select("answers, greenlight")
+                    .eq("id", str(session_id))
+                    .maybe_single()
+                )
+                if sess_row.data:
+                    session_answers = sess_row.data.get("answers") or {}
+                    gl = sess_row.data.get("greenlight") or {}
+                    target_start_date = gl.get("target_start_date") or ""
+            except Exception:
+                import logging as _log3
+                _log3.getLogger(__name__).debug("Could not load session %s for HubSpot enrichment", session_id)
+
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
         from src.core.config import get_settings as _gs
         if _gs().hubspot_access_token and customer_email:
             try:
                 from src.services.hubspot_service import HubSpotService
+                from src.services.checkout_service import _answer_val
                 company_name: str | None = None
                 if profile_id:
                     co = await checkout_service._execute_sync(
@@ -226,6 +246,15 @@ async def create_gynger_session(
                     company_name=company_name,
                     robot_name=robot["name"],
                     amount_usd=amount_cents / 100,
+                    order_id=str(order_id),
+                    payment_type="purchase",
+                    payment_provider="gynger",
+                    sqft=_answer_val(session_answers, "sqft"),
+                    monthly_spend=_answer_val(session_answers, "monthly_spend"),
+                    company_type=_answer_val(session_answers, "company_type"),
+                    cleaning_method=_answer_val(session_answers, "method"),
+                    cleaning_frequency=_answer_val(session_answers, "frequency"),
+                    target_start_date=target_start_date,
                 )
             except Exception:
                 import logging as _log
