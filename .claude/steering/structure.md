@@ -101,6 +101,7 @@ autopilot-mkt-backend/
 │   ├── setup-secrets.sh
 │   ├── stripe_dev.sh
 │   ├── sync_stripe_products.py
+│   ├── test_hubspot.py
 │   ├── update-steering.mjs
 │   ├── upload_new_images.py
 │   ├── upload_robot_images.py

@@ -176,6 +176,20 @@ class CheckoutService(BaseService):
         order = order_response.data[0]
         order_id = order["id"]
 
+        # Resolve customer email from profile if not provided (defense in depth for HubSpot)
+        if not customer_email and profile_id:
+            try:
+                profile_row = await self._execute_sync(
+                    self.client.table("profiles")
+                    .select("email")
+                    .eq("id", str(profile_id))
+                    .maybe_single()
+                )
+                if profile_row.data:
+                    customer_email = profile_row.data.get("email")
+            except Exception:
+                logger.debug("Could not resolve email from profile %s", profile_id)
+
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
         if self.settings.hubspot_access_token and customer_email:

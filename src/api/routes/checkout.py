@@ -189,10 +189,26 @@ async def create_gynger_session(
             order_id=str(order_id),
         )
 
+        # Resolve customer email from profile if not provided (defense in depth for HubSpot)
+        customer_email = data.customer_email
+        if not customer_email and profile_id:
+            try:
+                profile_row = await checkout_service._execute_sync(
+                    checkout_service.client.table("profiles")
+                    .select("email")
+                    .eq("id", str(profile_id))
+                    .maybe_single()
+                )
+                if profile_row.data:
+                    customer_email = profile_row.data.get("email")
+            except Exception:
+                import logging as _log2
+                _log2.getLogger(__name__).debug("Could not resolve email from profile %s", profile_id)
+
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
         from src.core.config import get_settings as _gs
-        if _gs().hubspot_access_token and data.customer_email:
+        if _gs().hubspot_access_token and customer_email:
             try:
                 from src.services.hubspot_service import HubSpotService
                 company_name: str | None = None
@@ -206,7 +222,7 @@ async def create_gynger_session(
                     if co.data:
                         company_name = co.data.get("name")
                 hubspot_deal_id = await HubSpotService().on_checkout_initiated(
-                    email=data.customer_email,
+                    email=customer_email,
                     company_name=company_name,
                     robot_name=robot["name"],
                     amount_usd=amount_cents / 100,

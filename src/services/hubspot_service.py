@@ -191,7 +191,7 @@ class HubSpotService:
             "dealstage": stage_id,
             "pipeline": self.settings.hubspot_pipeline_id,
             "closedate": date.today().isoformat(),
-            "hs_note_body": f"order_id={order_id} robot={robot_name} provider={payment_provider}",
+            "description": f"order_id={order_id} robot={robot_name} provider={payment_provider}",
         }
 
         associations = [
