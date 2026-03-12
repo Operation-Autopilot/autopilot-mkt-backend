@@ -223,13 +223,17 @@ class RobotCatalogService(BaseService):
         elif sort == RobotSortField.EFFICIENCY:
             return sorted(robots, key=lambda r: float(r.get("time_efficiency", 0)), reverse=True)
         else:
-            # FEATURED - sort by a combination of factors
-            # Higher score = better featured
+            # FEATURED - manual top picks, inactive always last
+            featured_boost = {"CC1 Pro": 100, "Kleenbot C40": 99, "Kleenbot C30": 98}
+
             def featured_score(r: dict[str, Any]) -> float:
+                if not r.get("active", True):
+                    return -1
+                boost = featured_boost.get(r.get("name", ""), 0)
                 efficiency = float(r.get("time_efficiency", 0.5))
                 has_image = 1 if r.get("image_url") else 0
                 mode_count = len(r.get("modes", []))
-                return efficiency * 10 + has_image * 5 + mode_count
+                return boost + efficiency * 10 + has_image * 5 + mode_count
             return sorted(robots, key=featured_score, reverse=True)
 
     async def get_filter_metadata(self) -> FilterMetadata:

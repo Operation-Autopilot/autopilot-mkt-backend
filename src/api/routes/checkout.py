@@ -3,6 +3,7 @@
 from decimal import Decimal
 from uuid import UUID
 
+import stripe
 from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import AuthContext, DualAuth
@@ -93,6 +94,11 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
+        ) from e
+    except stripe.error.StripeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e.user_message or e),
         ) from e
 
 
