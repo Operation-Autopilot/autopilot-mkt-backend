@@ -102,8 +102,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (23 files)
-    └── ...023_add_test_robot.sql  ← last applied
+└── supabase/migrations/  (24 files)
+    └── ...024_court_type_surfaces.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -302,4 +302,5 @@ class {Resource}Response({Resource}Base):
 - `021_set_inactive_robots.sql` — 021_set_inactive_robots.sql
 - `022_robot_image_updates.sql` — 022_robot_image_updates.sql
 - `023_add_test_robot.sql` — 023_add_test_robot.sql
+- `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
 <!-- AUTO-MIGRATIONS:END -->
