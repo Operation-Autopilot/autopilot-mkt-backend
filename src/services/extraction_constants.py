@@ -59,7 +59,7 @@ REQUIRED_QUESTIONS = [
     {
         "key": "method",
         "question": "What is your primary cleaning method today?",
-        "chips": ["Vacuum", "Sweep", "Mop", "Other"],
+        "chips": ["Vacuum", "Sweep", "Mop", "All"],
     },
     {
         "key": "frequency",
