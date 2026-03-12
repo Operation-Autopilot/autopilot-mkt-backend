@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { dmmsApiPlugin } from './dmms-plugin.mjs'
 
 export default defineConfig({
   title: 'Autopilot Marketplace',
@@ -115,6 +116,8 @@ export default defineConfig({
             { text: 'Sessions', link: '/status/sessions' },
             { text: 'Research', link: '/status/research' },
             { text: 'Roadmap', link: '/status/roadmap' },
+            { text: 'Context Map', link: '/status/context-map' },
+            { text: 'Bug Audit (Mar 2026)', link: '/status/bug-audit' },
           ],
         },
       ],
@@ -149,5 +152,6 @@ export default defineConfig({
     ssr: {
       noExternal: ['@vue-flow/core', '@vue-flow/background', '@vue-flow/controls', '@vue-flow/minimap'],
     },
+    plugins: [dmmsApiPlugin()],
   },
 })

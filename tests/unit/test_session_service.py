@@ -270,17 +270,29 @@ class TestClaimSession:
     async def test_raises_error_when_already_claimed(
         self, session_service: SessionService, mock_supabase: MagicMock
     ) -> None:
-        """Test that ValueError is raised when session already claimed."""
+        """Test that ValueError is raised when session already claimed.
+
+        The atomic claim uses UPDATE ... WHERE claimed_by_profile_id IS NULL.
+        When the session is already claimed, the UPDATE returns no rows.
+        """
         session = {
             "id": "550e8400-e29b-41d4-a716-446655440000",
-            "claimed_by_profile_id": "existing-profile-id",
+            "claimed_by_profile_id": None,
             "expires_at": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
         }
 
-        mock_response = MagicMock()
-        mock_response.data = session
+        # get_session_by_id returns the session (it exists)
+        mock_select_response = MagicMock()
+        mock_select_response.data = session
         mock_supabase.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = (
-            mock_response
+            mock_select_response
+        )
+
+        # Atomic claim UPDATE returns empty data (already claimed by another request)
+        mock_update_response = MagicMock()
+        mock_update_response.data = []
+        mock_supabase.table.return_value.update.return_value.eq.return_value.is_.return_value.execute.return_value = (
+            mock_update_response
         )
 
         with pytest.raises(ValueError, match="already been claimed"):

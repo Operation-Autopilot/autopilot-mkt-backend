@@ -102,8 +102,8 @@ autopilot-mkt-backend/
 │   ├── update-steering.mjs
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (18 files)
-    └── ...018_data_corrections.sql  ← last applied
+└── supabase/migrations/  (24 files)
+    └── ...024_court_type_surfaces.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -297,4 +297,10 @@ class {Resource}Response({Resource}Base):
 - `016_enable_sessions_rls.sql` — Enable RLS on sessions table to protect sensitive session_token column
 - `017_pickleball_messaging.sql` — 017_pickleball_messaging.sql
 - `018_data_corrections.sql` — 018_data_corrections.sql
+- `019_add_purchase_price_ids.sql` — Add Stripe purchase price IDs to robot_catalog for one-time purchase support
+- `020_enable_sessions_rls.sql` — Enable RLS on sessions table to protect sensitive session_token column
+- `021_set_inactive_robots.sql` — 021_set_inactive_robots.sql
+- `022_robot_image_updates.sql` — 022_robot_image_updates.sql
+- `023_add_test_robot.sql` — 023_add_test_robot.sql
+- `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
 <!-- AUTO-MIGRATIONS:END -->

@@ -130,6 +130,146 @@ class AuthService:
 
             raise ValidationError(f"Signup failed: {error_msg}") from e
 
+    async def signup_with_session(
+        self,
+        email: str,
+        password: str,
+        display_name: str | None = None,
+        company_name: str | None = None,
+        session_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomic signup + session claim to prevent race conditions.
+
+        Combines user creation, profile creation, inline extraction, and session
+        claiming into a single operation. This prevents data loss from background
+        extraction tasks racing with the claim.
+
+        Args:
+            email: User's email address.
+            password: User's password.
+            display_name: Optional display name.
+            company_name: Optional company name to create.
+            session_token: Optional anonymous session token to claim.
+
+        Returns:
+            dict: Combined signup + claim response.
+
+        Raises:
+            ValidationError: If signup fails.
+        """
+        # Step 1: Run the standard signup (creates auth user, profile, company)
+        signup_result = await self.signup(
+            email=email,
+            password=password,
+            display_name=display_name,
+            company_name=company_name,
+        )
+
+        # Base response from signup
+        result = {
+            **signup_result,
+            "session_claimed": False,
+            "discovery_profile_id": None,
+            "conversation_transferred": False,
+            "orders_transferred": 0,
+        }
+
+        # Step 2: Login immediately after signup to get auth tokens.
+        # Email verification is disabled for this project, so sign_in_with_password
+        # succeeds right away and gives us the JWT the frontend needs.
+        try:
+            from src.core.supabase import create_auth_client
+            auth_client = create_auth_client()
+            login_response = auth_client.auth.sign_in_with_password(
+                {"email": email, "password": password}
+            )
+            if login_response.session:
+                result["access_token"] = login_response.session.access_token
+                result["refresh_token"] = login_response.session.refresh_token
+                result["expires_in"] = login_response.session.expires_in or 3600
+            else:
+                logger.warning("No session returned from post-signup login for %s", email)
+        except Exception as e:
+            logger.warning("Failed to get auth tokens after signup for %s: %s", email, e)
+
+        # Step 3: If no session token, return now (tokens already included above)
+        if not session_token:
+            return result
+
+        # Step 3: Claim the session with inline extraction
+        try:
+            from src.services.checkout_service import CheckoutService
+            from src.services.profile_extraction_service import ProfileExtractionService
+            from src.services.session_service import SessionService
+
+            session_service = SessionService(checkout_service=CheckoutService())
+            session = await session_service.get_session_by_token(session_token)
+
+            if not session:
+                logger.warning("Session not found during signup-with-session for %s", email)
+                result["message"] += " Session not found — skipped claim."
+                return result
+
+            session_id = UUID(session["id"])
+            profile_id = UUID(signup_result["profile_id"])
+
+            # Run extraction INLINE (not background) to capture latest conversation data
+            conversation_id = session.get("conversation_id")
+            if conversation_id:
+                try:
+                    extraction_service = ProfileExtractionService()
+                    await extraction_service.extract_and_update(
+                        conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
+                        session_id=session_id,
+                    )
+                    logger.info("Inline extraction completed for session %s", session_id)
+                except Exception as e:
+                    logger.error("Inline extraction failed for session %s: %s", session_id, e)
+                    # Continue with claim using whatever data the session already has
+
+                # Re-read session to get freshly extracted data
+                session = await session_service.get_session_by_id(session_id)
+                if not session:
+                    logger.error("Session %s disappeared after extraction", session_id)
+                    result["message"] += " Session lost during extraction — skipped claim."
+                    return result
+
+            # Claim the session (atomic — will fail if already claimed)
+            claim_result = await session_service.claim_session(
+                session_id=session_id,
+                profile_id=profile_id,
+            )
+
+            result["session_claimed"] = True
+            result["discovery_profile_id"] = claim_result["discovery_profile"]["id"]
+            result["conversation_transferred"] = claim_result["conversation_transferred"]
+            result["orders_transferred"] = claim_result["orders_transferred"]
+            logger.info(
+                "Session %s claimed during signup for user %s",
+                session_id,
+                signup_result["user_id"],
+            )
+
+        except ValueError as e:
+            # Session expired, already claimed, etc. — don't fail the signup
+            logger.warning(
+                "Session claim failed during signup for %s: %s",
+                email,
+                str(e),
+            )
+            result["message"] += f" Session claim skipped: {e}"
+        except Exception as e:
+            # Unexpected error — don't fail the signup
+            logger.error(
+                "Unexpected error claiming session during signup for %s: %s",
+                email,
+                e,
+                exc_info=True,
+            )
+            result["message"] += " Session claim failed unexpectedly."
+
+        return result
+
     async def verify_email(
         self,
         token: str,

@@ -5,6 +5,11 @@ import './custom.css'
 import StatsGrid from './components/StatsGrid.vue'
 import ProductHierarchy from './components/ProductHierarchy.vue'
 import ServiceInventoryTable from './components/ServiceInventoryTable.vue'
+import IssuesPage from './components/IssuesPage.vue'
+import SprintsPage from './components/SprintsPage.vue'
+import SessionsPage from './components/SessionsPage.vue'
+import ResearchPage from './components/ResearchPage.vue'
+import ContextMapPage from './components/ContextMapPage.vue'
 
 export default {
   extends: DefaultTheme,
@@ -12,6 +17,11 @@ export default {
     app.component('StatsGrid', StatsGrid)
     app.component('ProductHierarchy', ProductHierarchy)
     app.component('ServiceInventoryTable', ServiceInventoryTable)
+    app.component('IssuesPage', IssuesPage)
+    app.component('SprintsPage', SprintsPage)
+    app.component('SessionsPage', SessionsPage)
+    app.component('ResearchPage', ResearchPage)
+    app.component('ContextMapPage', ContextMapPage)
 
     if (typeof window !== 'undefined') {
       app.component('SystemArchitecture', defineAsyncComponent(() =>

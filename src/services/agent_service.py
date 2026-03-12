@@ -710,6 +710,39 @@ Do NOT ask about {last_question_asked} again. The user's response above is likel
 Move on to the NEXT topic in the "STILL NEED TO LEARN" list.
 """
 
+        # Build context-aware instruction for when spend is unknown.
+        # Duration and frequency are asked earlier in the flow, so if they're
+        # already answered we should not ask for them again.
+        def _ans_val(key: str) -> str:
+            ans = current_answers.get(key)
+            if not ans or not isinstance(ans, dict):
+                return ""
+            return str(ans.get("value", "")).strip().lower()
+
+        _skip_vals = {"unknown", "don't know", "not sure", "other", ""}
+        _duration_known = bool(_ans_val("duration")) and _ans_val("duration") not in _skip_vals
+        _frequency_known = bool(_ans_val("frequency")) and _ans_val("frequency") not in _skip_vals
+
+        if _duration_known and _frequency_known:
+            spend_unknown_instruction = (
+                '12. If the user says "I\'m not sure" or "I don\'t know" about monthly cleaning spend, '
+                "acknowledge it warmly, then ask two quick follow-up questions to help estimate their costs: "
+                '"No problem! To help me estimate, roughly how much do you pay your cleaners per hour, '
+                'and how many cleaners do you typically have?" '
+                "Extract their answers as hourly_rate (dollar amount per hour) and staff_count (number of cleaners). "
+                "If they can't answer those either, reassure them you'll estimate from their cleaning schedule. "
+                "Do NOT ask for hours or frequency again — you already have those. "
+                'Set monthly_spend answer value to "unknown".'
+            )
+        else:
+            spend_unknown_instruction = (
+                '12. If the user says "I\'m not sure" or "I don\'t know" about monthly cleaning spend, '
+                'ask for an estimate instead: "No problem — roughly how many hours a week do you clean, '
+                'and how often?" If they still can\'t estimate, acknowledge it warmly and say you\'ll '
+                "calculate from their cleaning schedule. "
+                'Set monthly_spend answer value to "unknown".'
+            )
+
         return f"""You are Autopilot, a premium robotics procurement consultant.
 
 AVAILABLE ROBOT CATALOG (ONLY recommend from this list):
@@ -727,13 +760,13 @@ INSTRUCTIONS:
 3. If there are STILL missing questions after considering the current message, weave ONE into your response
 4. NEVER ask about something the user just told you in this message - move to the next unknown topic
 5. NEVER re-ask a question you just asked - the user's message is likely the answer
-6. Set ready_for_roi=true ONLY when you have answers for most required questions (4+ of 7)
+6. Set ready_for_roi=true ONLY when you have answers for at least 5 of 7 required questions AND you have asked about frequency and duration (critical for ROI calculations). Do NOT set it early just because the user seems engaged.
 7. Return chips matching the question you're asking, or empty array for open-ended questions
 8. When discussing specific robots, ONLY mention robots from the AVAILABLE ROBOT CATALOG above
 9. NEVER make up or hallucinate robot models - if asked about specific models, only reference the catalog
 10. If recommendations are available, reference them when discussing robot options
 11. NEVER assume facts the user hasn't shared. If information is missing from "WHAT YOU KNOW", do not reference or guess it.
-12. If the user says "I'm not sure" or "I don't know" about monthly cleaning spend, ask for an estimate instead: "No problem — roughly how many cleaning staff do you have, how many hours a week do they clean, and what do you pay per hour?" If they still can't estimate, acknowledge it warmly and say you'll calculate from their cleaning schedule. Set monthly_spend answer value to "unknown".
+{spend_unknown_instruction}
 13. If the user's message is clearly nonsensical, random characters, or obviously not a real answer (e.g., "asdfjkl", "!!!", random words unrelated to cleaning), gently ask them to clarify. Do NOT extract an answer from unintelligible input.
 14. Keep your response concise — 2-3 short sentences plus any question. Never exceed 100 words.
 
@@ -1114,6 +1147,34 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             for key, ans in current_answers.items()
         ) if current_answers else "Basic facility information collected"
 
+        # Determine which ROI-relevant data was actually provided by the user
+        def _has_answer(key: str) -> bool:
+            ans = current_answers.get(key)
+            if not ans or not isinstance(ans, dict):
+                return False
+            val = str(ans.get("value", "")).strip().lower()
+            return bool(val) and val not in ("unknown", "don't know", "not sure", "other", "")
+
+        has_spend = _has_answer("monthly_spend")
+        has_duration = _has_answer("duration")
+        has_frequency = _has_answer("frequency")
+
+        data_quality_note = ""
+        if not has_spend:
+            if has_duration and has_frequency:
+                data_quality_note = (
+                    "DATA NOTE: The user did NOT provide their cleaning budget. "
+                    "ROI estimates are derived from their hours and frequency data using a $20/hr labor rate. "
+                    "Do NOT reference specific dollar spend amounts in your message."
+                )
+            else:
+                data_quality_note = (
+                    "DATA NOTE: The user did NOT provide their cleaning budget, frequency, or duration. "
+                    "ROI estimates use industry benchmark data for their facility type. "
+                    "Do NOT reference specific dollar spend amounts in your message. "
+                    "You may mention that the ROI page shows estimates based on industry data for their facility type."
+                )
+
         robot_info = ""
         if selected_robot:
             robot_info = f"""
@@ -1131,7 +1192,7 @@ COMPANY: {company_name or 'Unknown'}
 
 DISCOVERY DATA COLLECTED:
 {discovery_summary}
-{robot_info}
+{robot_info}{data_quality_note}
 CONTEXT: The user clicked "Show Me" to view their ROI calculations. They're about to see how automation changes the economics of their facility.
 
 INSTRUCTIONS:
@@ -1140,6 +1201,7 @@ INSTRUCTIONS:
 3. Build anticipation for the ROI insights they're about to see
 4. Keep it to 2-3 sentences max
 5. Set chips for next actions in the ROI view
+6. If a DATA NOTE is present above, follow it strictly — do not invent or reference spending numbers the user didn't provide
 
 TONE: Confident, consultative, value-focused. Like a consultant about to present compelling findings.
 
@@ -1311,8 +1373,12 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             )
 
         async def fetch_recommendations() -> Any:
-            """Fetch recommendations if we have enough answers."""
-            if len(answered_keys) < 4 or not current_answers:
+            """Fetch recommendations if we have enough required answers."""
+            # Only count REQUIRED question keys — non-required keys (sqft, etc.)
+            # shouldn't trigger recommendation fetching prematurely.
+            # Threshold of 5 matches MIN_QUESTIONS_FOR_ROI in discovery.py.
+            answered_required = answered_keys & REQUIRED_QUESTION_KEYS
+            if len(answered_required) < 5 or not current_answers:
                 return None
 
             try:

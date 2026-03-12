@@ -207,27 +207,21 @@ class GyngerService(BaseService):
             offer_status,
         )
 
-        # Fire HubSpot Closed Won task when financing is approved
+        # HubSpot: move Lead deal to Closed Won (fire-and-forget)
         if new_order_status == "completed":
             try:
                 import asyncio
                 from src.core.config import get_settings as _gs
                 from src.services.hubspot_service import HubSpotService
-                settings = _gs()
-                if settings.hubspot_access_token:
-                    email = order.get("customer_email") or ""
-                    line_items = order.get("line_items") or []
-                    robot_name = line_items[0].get("product_name", "") if line_items else ""
-                    asyncio.create_task(
-                        HubSpotService().on_payment_completed(
-                            email=email,
-                            order_id=str(order.get("id", "")),
-                            robot_name=robot_name,
-                            total_cents=order.get("total_cents", 0),
-                            payment_provider="gynger",
-                            company_name=None,
+                if _gs().hubspot_access_token:
+                    hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
+                    if hs_deal_id:
+                        asyncio.create_task(
+                            HubSpotService().on_deal_closed(
+                                deal_id=hs_deal_id,
+                                amount_usd=order.get("total_cents", 0) / 100,
+                            )
                         )
-                    )
             except Exception:
                 logger.exception("HubSpot task creation failed after Gynger approval (non-fatal)")
 

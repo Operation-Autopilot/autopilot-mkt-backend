@@ -40,6 +40,10 @@ class ROIInputs(BaseModel):
         ge=0,
         description="Current monthly hours spent on cleaning"
     )
+    benchmark_note: str | None = Field(
+        default=None,
+        description="Explanation shown to user when industry benchmarks are used instead of their provided data"
+    )
 
 
 class ROICalculationRequest(BaseModel):
@@ -128,6 +132,10 @@ class ROICalculation(BaseModel):
     factors_considered: list[str] = Field(
         default_factory=list,
         description="Factors included in the calculation"
+    )
+    benchmark_note: str | None = Field(
+        default=None,
+        description="Shown to user when industry benchmarks were used instead of their provided spend data"
     )
 
 

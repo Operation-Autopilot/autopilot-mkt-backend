@@ -34,6 +34,8 @@ DISCOVERY_QUESTIONS = [
     {"id": 24, "key": "ideal_timeline", "label": "Ideal Timeline", "group": "Context"},
     {"id": 25, "key": "upcoming_events", "label": "Upcoming Events", "group": "Context"},
     {"id": 26, "key": "business_challenges", "label": "Business Constraints", "group": "Context"},
+    {"id": 27, "key": "staff_count", "label": "Cleaning Staff", "group": "Operations"},
+    {"id": 28, "key": "hourly_rate", "label": "Hourly Rate", "group": "Economics"},
 ]
 
 # Required questions for robot recommendation (must be gathered before ROI phase)
@@ -109,9 +111,14 @@ CRITICAL: Company Name vs Company Type Distinction
 The discovery questions cover these groups:
 - Company: company_name, company_type, priorities, stakeholders
 - Facility: background, fnb (food & beverage), courts_count, surfaces, sqft, lifecycle
-- Operations: method (cleaning), responsibility, frequency, timing, duration, challenges, failure_impact
-- Economics: budget_exists, monthly_spend, opportunity_cost
+- Operations: method (cleaning), responsibility, frequency, timing, duration, challenges, failure_impact, staff_count
+- Economics: budget_exists, monthly_spend, opportunity_cost, hourly_rate
 - Context: feedback, confidence, past_attempts, ideal_timeline, upcoming_events, business_challenges
+
+CRITICAL: courts_count vs staff_count distinction
+- courts_count: number of physical courts in a sports facility (e.g., "8 pickleball courts", "12 tennis courts")
+- staff_count: number of cleaning staff or janitors (e.g., "5 cleaning staff", "3 janitors", "2 cleaners")
+- These are different. NEVER use courts_count for people. NEVER use staff_count for courts.
 
 Extract ROI inputs when the user mentions:
 - laborRate: hourly wages or labor costs per hour

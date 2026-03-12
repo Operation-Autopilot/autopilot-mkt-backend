@@ -3,7 +3,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from src.api.deps import AuthContext, CurrentUser, DualAuth, SessionRateLimit
 from src.schemas.conversation import (
@@ -628,7 +628,6 @@ async def send_message(
     data: MessageCreate,
     auth: DualAuth,
     _rate_limit: SessionRateLimit,
-    background_tasks: BackgroundTasks,
 ) -> MessageWithAgentResponse:
     """Send a message to a conversation and get agent response.
 
@@ -703,27 +702,28 @@ async def send_message(
             metadata=data.metadata,
         )
 
-    # Trigger profile extraction in background (non-blocking for faster response)
-    # BUG-47: Moved to BackgroundTasks to avoid blocking the response
-    async def _run_extraction() -> None:
-        try:
-            extraction_service = ProfileExtractionService()
-            extraction_result = await extraction_service.extract_and_update(
-                conversation_id=conversation_id,
-                session_id=session_id,
-                profile_id=profile_id,
+    # Run profile extraction inline so the frontend's session query refetch
+    # gets the updated answers immediately. Previously this was a BackgroundTasks
+    # callback (BUG-47) which caused a 1-turn delay: the frontend refetched
+    # session data before extraction had written to the DB. The gpt-4o-mini
+    # extraction call adds ~200-400ms, acceptable since the user is already
+    # waiting for the main LLM response (~1-2s).
+    try:
+        extraction_service = ProfileExtractionService()
+        extraction_result = await extraction_service.extract_and_update(
+            conversation_id=conversation_id,
+            session_id=session_id,
+            profile_id=profile_id,
+        )
+        if extraction_result.get("extracted_count", 0) > 0:
+            logger.info(
+                "Extracted %d fields from conversation %s: %s",
+                extraction_result["extracted_count"],
+                conversation_id,
+                extraction_result.get("keys_extracted", []),
             )
-            if extraction_result.get("extracted_count", 0) > 0:
-                logger.info(
-                    "Extracted %d fields from conversation %s: %s",
-                    extraction_result["extracted_count"],
-                    conversation_id,
-                    extraction_result.get("keys_extracted", []),
-                )
-        except Exception as e:
-            logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
-
-    background_tasks.add_task(_run_extraction)
+    except Exception as e:
+        logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
 
     return MessageWithAgentResponse(
         user_message=user_message,

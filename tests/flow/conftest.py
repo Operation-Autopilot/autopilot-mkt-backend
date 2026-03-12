@@ -329,6 +329,10 @@ class FakeQueryBuilder:
         self._filters.append(("ilike", column, pattern))
         return self
 
+    def is_(self, column: str, value: str) -> "FakeQueryBuilder":
+        self._filters.append(("is_", column, value))
+        return self
+
     def or_(self, filter_str: str) -> "FakeQueryBuilder":
         # Simplified: no-op for flow tests (returns all matching rows)
         return self
@@ -368,6 +372,13 @@ class FakeQueryBuilder:
                 result = [r for r in result if r.get(col, 0) >= val]
             elif op == "lte":
                 result = [r for r in result if r.get(col, 0) <= val]
+            elif op == "is_":
+                if val == "null":
+                    result = [r for r in result if r.get(col) is None]
+                elif val == "true":
+                    result = [r for r in result if r.get(col) is True]
+                elif val == "false":
+                    result = [r for r in result if r.get(col) is False]
             elif op == "ilike":
                 pattern = val.replace("%", "").lower()
                 result = [r for r in result if pattern in str(r.get(col, "")).lower()]
