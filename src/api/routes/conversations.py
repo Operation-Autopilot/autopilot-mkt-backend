@@ -187,8 +187,8 @@ async def reset_conversation(
         )
         profile_id = UUID(profile["id"])
 
-        # Get discovery profile for context
-        discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+        # Get discovery profile for context (company-scoped when applicable)
+        discovery_profile = await discovery_service.get_for_user(profile_id)
         if discovery_profile:
             answers = discovery_profile.get("answers", {})
             if answers:
@@ -333,8 +333,8 @@ async def get_current_conversation(
         )
         profile_id = UUID(profile["id"])
 
-        # Get discovery profile for context
-        discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+        # Get discovery profile for context (company-scoped when applicable)
+        discovery_profile = await discovery_service.get_for_user(profile_id)
         logger.info(
             "Current conversation: profile_id=%s, discovery_profile_found=%s",
             profile_id,

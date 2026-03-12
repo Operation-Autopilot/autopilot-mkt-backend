@@ -141,7 +141,7 @@ class ProfileExtractionService:
             session = await self.session_service.get_session_by_id(session_id)
             return session.get("answers", {}) if session else {}
         elif profile_id:
-            profile = await self.discovery_profile_service.get_by_profile_id(profile_id)
+            profile = await self.discovery_profile_service.get_for_user(profile_id)
             return profile.get("answers", {}) if profile else {}
         return {}
 
@@ -261,6 +261,12 @@ class ProfileExtractionService:
                 from src.schemas.discovery import DiscoveryProfileUpdate
 
                 claimed_profile_id = UUID(str(session["claimed_by_profile_id"]))
+                # Resolve company_id for the claimed user
+                from src.services.company_service import CompanyService
+                company_service = CompanyService()
+                company = await company_service.get_user_company(claimed_profile_id)
+                claimed_company_id = UUID(company["id"]) if company else None
+
                 profile_update = DiscoveryProfileUpdate(answers=answers)
                 if roi_inputs:
                     valid_roi = {
@@ -278,7 +284,9 @@ class ProfileExtractionService:
                             "manualMonthlyHours": valid_roi.get("manualMonthlyHours", 0),
                         }
                         profile_update.roi_inputs = ROIInputsSchema(**full_roi)
-                await self.discovery_profile_service.update(claimed_profile_id, profile_update)
+                await self.discovery_profile_service.update(
+                    claimed_profile_id, profile_update, company_id=claimed_company_id
+                )
                 return
 
             update_data = SessionUpdate(answers=answers)
@@ -323,4 +331,11 @@ class ProfileExtractionService:
                         "manualMonthlyHours": valid_roi.get("manualMonthlyHours", 0),
                     }
                     update_data.roi_inputs = ROIInputsSchema(**full_roi)
-            await self.discovery_profile_service.update(profile_id, update_data)
+            # Resolve company_id for the user
+            from src.services.company_service import CompanyService
+            company_service = CompanyService()
+            company = await company_service.get_user_company(profile_id)
+            company_id = UUID(company["id"]) if company else None
+            await self.discovery_profile_service.update(
+                profile_id, update_data, company_id=company_id
+            )

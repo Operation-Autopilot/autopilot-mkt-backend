@@ -103,6 +103,7 @@ async def signup_with_session(data: SignupWithSessionRequest) -> SignupWithSessi
             display_name=data.display_name,
             company_name=data.company_name,
             session_token=data.session_token,
+            invitation_id=data.invitation_id,
         )
         return SignupWithSessionResponse(**result)
     except ValidationError as e:
