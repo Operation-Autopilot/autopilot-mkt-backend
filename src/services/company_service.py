@@ -1,5 +1,6 @@
 """Company business logic service."""
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -7,6 +8,8 @@ from src.api.middleware.error_handler import AuthorizationError, NotFoundError
 from src.core.supabase import get_supabase_client
 from src.schemas.company import CompanyCreate, CompanyMemberResponse, MemberProfile
 from src.services.base_service import BaseService
+
+logger = logging.getLogger(__name__)
 
 
 class CompanyService(BaseService):
@@ -22,6 +25,9 @@ class CompanyService(BaseService):
         owner_profile_id: UUID,
     ) -> dict[str, Any]:
         """Create a new company and add owner as member.
+
+        Also links the owner's existing discovery profile to the new company,
+        so discovery data becomes shared across all future company members.
 
         Args:
             data: Company creation data.
@@ -54,6 +60,28 @@ class CompanyService(BaseService):
         await self._execute_sync(
             self.client.table("company_members").insert(member_data)
         )
+
+        # Link owner's existing discovery profile to this company
+        try:
+            existing_dp = await self._execute_sync(
+                self.client.table("discovery_profiles")
+                .select("id, company_id")
+                .eq("profile_id", str(owner_profile_id))
+                .is_("company_id", "null")
+                .maybe_single()
+            )
+            if existing_dp and existing_dp.data:
+                await self._execute_sync(
+                    self.client.table("discovery_profiles")
+                    .update({"company_id": company["id"]})
+                    .eq("id", existing_dp.data["id"])
+                )
+                logger.info(
+                    "Linked existing discovery profile %s to company %s",
+                    existing_dp.data["id"], company["id"],
+                )
+        except Exception as e:
+            logger.warning("Failed to link discovery profile to company: %s", e)
 
         return company
 

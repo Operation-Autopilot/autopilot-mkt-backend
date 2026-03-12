@@ -87,6 +87,7 @@ class InvitationService(BaseService):
             inviter_name=inviter_name,
             company_name=company_name,
             invitation_id=invitation["id"],
+            invitee_name=data.name,
         )
 
         if email_result.get("success"):

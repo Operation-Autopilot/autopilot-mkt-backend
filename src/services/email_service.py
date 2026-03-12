@@ -3,6 +3,7 @@
 import html
 import logging
 from typing import Any
+from urllib.parse import urlencode
 
 import resend
 
@@ -27,6 +28,7 @@ class EmailService:
         inviter_name: str,
         company_name: str,
         invitation_id: str,
+        invitee_name: str | None = None,
     ) -> dict[str, Any]:
         """Send a company invitation email.
 
@@ -35,11 +37,20 @@ class EmailService:
             inviter_name: Name of the person who sent the invite.
             company_name: Name of the company being invited to.
             invitation_id: UUID of the invitation for the accept link.
+            invitee_name: Optional name of the invitee (for signup form prepopulation).
 
         Returns:
             dict: Resend API response with email ID.
         """
-        accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept"
+        params: dict[str, str] = {
+            "email": to_email,
+            "company": company_name,
+            "inviter": inviter_name,
+        }
+        if invitee_name:
+            params["name"] = invitee_name
+        query_params = urlencode(params)
+        accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept?{query_params}"
 
         safe_inviter = html.escape(inviter_name)
         safe_company = html.escape(company_name)
@@ -122,6 +133,7 @@ This invitation expires in 7 days. If you didn't expect this invitation, you can
         inviter_name: str,
         company_name: str,
         invitation_id: str,
+        invitee_name: str | None = None,
     ) -> dict[str, Any]:
         """Send a reminder for a pending company invitation.
 
@@ -134,7 +146,15 @@ This invitation expires in 7 days. If you didn't expect this invitation, you can
         Returns:
             dict: Resend API response with email ID.
         """
-        accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept"
+        params: dict[str, str] = {
+            "email": to_email,
+            "company": company_name,
+            "inviter": inviter_name,
+        }
+        if invitee_name:
+            params["name"] = invitee_name
+        query_params = urlencode(params)
+        accept_url = f"{self.frontend_url}/invitations/{invitation_id}/accept?{query_params}"
 
         safe_inviter = html.escape(inviter_name)
         safe_company = html.escape(company_name)

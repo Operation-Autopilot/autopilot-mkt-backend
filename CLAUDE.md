@@ -50,7 +50,11 @@ Migrations are located in `supabase/migrations/` and follow sequential numbering
 - `013_add_payment_pending_status.sql` - Add `payment_pending` to order_status enum (ACH)
 - `014_add_gynger_to_orders.sql` - `gynger_application_id` + `payment_provider` columns on orders
 
-**Migrations 015–016 are PLANNED but not yet created:**
+**Note:** Migrations 015–025 exist in the migrations folder (check filenames for details).
+
+- `026_company_scoped_discovery_profiles.sql` - Add `company_id` to discovery_profiles for shared company discovery data
+
+**Migrations PLANNED but not yet created:**
 - `015_hubspot_connections.sql` - HubSpot OAuth token storage (planned)
 - `016_session_shares.sql` - Public share link tokens and snapshots (planned)
 

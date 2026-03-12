@@ -58,6 +58,7 @@ class InvitationCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     email: EmailStr = Field(..., description="Email address to invite")
+    name: str | None = Field(default=None, description="Invitee's name (prepopulates signup form)", max_length=255)
 
 
 class InvitationResponse(BaseModel):

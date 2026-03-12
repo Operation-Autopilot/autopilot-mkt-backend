@@ -250,6 +250,7 @@ class SignupWithSessionRequest(BaseModel):
     display_name: str | None = Field(default=None, description="User's display name", max_length=255)
     company_name: str | None = Field(default=None, description="Company name to create", max_length=255)
     session_token: str | None = Field(default=None, description="Anonymous session token to claim")
+    invitation_id: str | None = Field(default=None, description="Invitation ID to accept on signup (skips company creation)")
 
 
 class SignupWithSessionResponse(BaseModel):
@@ -267,6 +268,7 @@ class SignupWithSessionResponse(BaseModel):
     discovery_profile_id: str | None = Field(default=None, description="Discovery profile ID from claim")
     conversation_transferred: bool = Field(default=False, description="Whether conversation was transferred")
     orders_transferred: int = Field(default=0, description="Number of orders transferred")
+    invitation_accepted: bool = Field(default=False, description="Whether an invitation was accepted during signup")
     # Auth tokens — populated when email verification is disabled (immediate login after signup)
     access_token: str | None = Field(default=None, description="JWT access token for immediate login")
     refresh_token: str | None = Field(default=None, description="JWT refresh token")

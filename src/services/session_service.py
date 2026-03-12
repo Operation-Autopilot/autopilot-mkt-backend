@@ -247,6 +247,7 @@ class SessionService(BaseService):
         self,
         session_id: UUID,
         profile_id: UUID,
+        company_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Claim a session and merge its data to a user profile.
 
@@ -257,6 +258,7 @@ class SessionService(BaseService):
         Args:
             session_id: The session UUID to claim.
             profile_id: The profile UUID to claim the session for.
+            company_id: Optional company UUID for company-scoped discovery.
 
         Returns:
             dict: Result containing discovery_profile, conversation_transferred,
@@ -278,6 +280,17 @@ class SessionService(BaseService):
             if expires_at < datetime.now(timezone.utc):
                 raise ValueError("Session has expired")
 
+        # Resolve company_id if not provided
+        if not company_id:
+            try:
+                from src.services.company_service import CompanyService
+                company_service = CompanyService()
+                company = await company_service.get_user_company(profile_id)
+                if company:
+                    company_id = UUID(company["id"])
+            except Exception as e:
+                logger.warning("Failed to resolve company for session claim: %s", e)
+
         # Atomically claim the session — prevents double-claim race condition
         # The WHERE clause ensures only one request can succeed
         claim_query = (
@@ -294,6 +307,7 @@ class SessionService(BaseService):
         discovery_profile = await self._create_or_update_discovery_profile(
             profile_id=profile_id,
             session=session,
+            company_id=company_id,
         )
 
         # Transfer conversation ownership if exists
@@ -328,6 +342,7 @@ class SessionService(BaseService):
         self,
         profile_id: UUID,
         session: dict[str, Any],
+        company_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Create or update a discovery profile from session data.
 
@@ -337,22 +352,37 @@ class SessionService(BaseService):
         Args:
             profile_id: The profile UUID.
             session: The session data to copy.
+            company_id: Optional company UUID for company-scoped profiles.
 
         Returns:
             dict: The created or updated discovery profile.
         """
-        # Check if discovery profile exists
-        query = (
-            self.client.table("discovery_profiles")
-            .select("*")
-            .eq("profile_id", str(profile_id))
-        )
-        existing = await self._execute_sync(query)
+        # Check if discovery profile exists (company-scoped or personal)
+        existing_profile = None
+        if company_id:
+            query = (
+                self.client.table("discovery_profiles")
+                .select("*")
+                .eq("company_id", str(company_id))
+                .maybe_single()
+            )
+            response = await self._execute_sync(query)
+            if response and response.data:
+                existing_profile = response.data
 
-        if existing.data:
+        if not existing_profile:
+            query = (
+                self.client.table("discovery_profiles")
+                .select("*")
+                .eq("profile_id", str(profile_id))
+            )
+            existing = await self._execute_sync(query)
+            if existing.data:
+                existing_profile = existing.data[0]
+
+        if existing_profile:
             # Smart merge: only update empty/default fields, preserve existing progress
-            existing_profile = existing.data[0]
-            merged_data = {}
+            merged_data: dict[str, Any] = {}
 
             # current_question_index: keep higher value (more progress)
             session_index = session.get("current_question_index", 0)
@@ -392,12 +422,16 @@ class SessionService(BaseService):
             if not existing_profile.get("greenlight") and session.get("greenlight"):
                 merged_data["greenlight"] = session["greenlight"]
 
+            # Link to company if not already linked
+            if company_id and not existing_profile.get("company_id"):
+                merged_data["company_id"] = str(company_id)
+
             # Only update if there's something to merge
             if merged_data:
                 query = (
                     self.client.table("discovery_profiles")
                     .update(merged_data)
-                    .eq("profile_id", str(profile_id))
+                    .eq("id", existing_profile["id"])
                 )
                 response = await self._execute_sync(query)
                 if response.data and len(response.data) > 0:
@@ -408,7 +442,7 @@ class SessionService(BaseService):
                 return existing_profile
         else:
             # Create new profile with session data
-            profile_data = {
+            profile_data: dict[str, Any] = {
                 "profile_id": str(profile_id),
                 "current_question_index": session.get("current_question_index", 0),
                 "phase": session.get("phase", "discovery"),
@@ -418,6 +452,8 @@ class SessionService(BaseService):
                 "timeframe": session.get("timeframe"),
                 "greenlight": session.get("greenlight"),
             }
+            if company_id:
+                profile_data["company_id"] = str(company_id)
             query = (
                 self.client.table("discovery_profiles")
                 .insert(profile_data)

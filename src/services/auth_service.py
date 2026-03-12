@@ -137,6 +137,7 @@ class AuthService:
         display_name: str | None = None,
         company_name: str | None = None,
         session_token: str | None = None,
+        invitation_id: str | None = None,
     ) -> dict[str, Any]:
         """Atomic signup + session claim to prevent race conditions.
 
@@ -144,12 +145,16 @@ class AuthService:
         claiming into a single operation. This prevents data loss from background
         extraction tasks racing with the claim.
 
+        When invitation_id is provided, company_name is ignored (the user joins
+        the inviter's company instead of creating a new one).
+
         Args:
             email: User's email address.
             password: User's password.
             display_name: Optional display name.
-            company_name: Optional company name to create.
+            company_name: Optional company name to create (ignored if invitation_id set).
             session_token: Optional anonymous session token to claim.
+            invitation_id: Optional invitation ID to accept on signup.
 
         Returns:
             dict: Combined signup + claim response.
@@ -157,12 +162,15 @@ class AuthService:
         Raises:
             ValidationError: If signup fails.
         """
-        # Step 1: Run the standard signup (creates auth user, profile, company)
+        # If accepting an invitation, don't create a new company
+        effective_company_name = None if invitation_id else company_name
+
+        # Step 1: Run the standard signup (creates auth user, profile, optionally company)
         signup_result = await self.signup(
             email=email,
             password=password,
             display_name=display_name,
-            company_name=company_name,
+            company_name=effective_company_name,
         )
 
         # Base response from signup
@@ -172,6 +180,7 @@ class AuthService:
             "discovery_profile_id": None,
             "conversation_transferred": False,
             "orders_transferred": 0,
+            "invitation_accepted": False,
         }
 
         # Step 2: Login immediately after signup to get auth tokens.
@@ -192,11 +201,37 @@ class AuthService:
         except Exception as e:
             logger.warning("Failed to get auth tokens after signup for %s: %s", email, e)
 
-        # Step 3: If no session token, return now (tokens already included above)
+        # Step 3: Accept invitation if provided
+        if invitation_id:
+            try:
+                from src.services.invitation_service import InvitationService
+                invitation_service = InvitationService()
+                profile_id = UUID(signup_result["profile_id"])
+
+                await invitation_service.accept_invitation(
+                    invitation_id=UUID(invitation_id),
+                    profile_id=profile_id,
+                    user_email=email,
+                )
+                result["invitation_accepted"] = True
+
+                # Update company_id in result from the invitation's company
+                from src.services.company_service import CompanyService
+                company_service = CompanyService()
+                company = await company_service.get_user_company(profile_id)
+                if company:
+                    result["company_id"] = company["id"]
+
+                logger.info("Invitation %s accepted during signup for %s", invitation_id, email)
+            except Exception as e:
+                logger.warning("Failed to accept invitation %s during signup: %s", invitation_id, e)
+                result["message"] += f" Invitation acceptance failed: {e}"
+
+        # Step 4: If no session token, return now (tokens already included above)
         if not session_token:
             return result
 
-        # Step 3: Claim the session with inline extraction
+        # Step 4: Claim the session with inline extraction
         try:
             from src.services.checkout_service import CheckoutService
             from src.services.profile_extraction_service import ProfileExtractionService
@@ -235,9 +270,12 @@ class AuthService:
                     return result
 
             # Claim the session (atomic — will fail if already claimed)
+            # Pass company_id so session data lands on the company's discovery profile
+            claim_company_id = UUID(signup_result["company_id"]) if signup_result.get("company_id") else None
             claim_result = await session_service.claim_session(
                 session_id=session_id,
                 profile_id=profile_id,
+                company_id=claim_company_id,
             )
 
             result["session_claimed"] = True

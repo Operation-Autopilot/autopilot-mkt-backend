@@ -1,5 +1,7 @@
 """Discovery profile API routes for authenticated users."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import CurrentUser
@@ -34,6 +36,18 @@ def compute_ready_for_roi(answers: dict, has_company: bool = False) -> bool:
     return answered_required >= MIN_QUESTIONS_FOR_ROI
 
 
+async def _resolve_company(profile_id: str) -> tuple[dict | None, UUID | None]:
+    """Resolve user's company and company_id.
+
+    Returns:
+        Tuple of (company dict or None, company_id UUID or None).
+    """
+    company_service = CompanyService()
+    company = await company_service.get_user_company(UUID(profile_id))
+    company_id = UUID(company["id"]) if company else None
+    return company, company_id
+
+
 @router.get(
     "",
     response_model=DiscoveryProfileResponse,
@@ -45,7 +59,8 @@ async def get_discovery_profile(user: CurrentUser) -> DiscoveryProfileResponse:
 
     This endpoint returns the user's discovery progress including
     answers, ROI inputs, and product selections. If no profile exists,
-    one is created automatically.
+    one is created automatically. For company members, returns the
+    shared company discovery profile.
 
     Args:
         user: The authenticated user context.
@@ -62,13 +77,14 @@ async def get_discovery_profile(user: CurrentUser) -> DiscoveryProfileResponse:
         email=user.email,
     )
 
-    # Get or create discovery profile
-    discovery_profile = await discovery_service.get_or_create(profile["id"])
-
-    # Check if user has a company (company_name can be derived from it)
-    company_service = CompanyService()
-    company = await company_service.get_user_company(profile["id"])
+    # Resolve company context
+    company, company_id = await _resolve_company(profile["id"])
     has_company = company is not None and company.get("name")
+
+    # Get or create discovery profile (company-scoped when applicable)
+    discovery_profile = await discovery_service.get_or_create(
+        profile["id"], company_id=company_id
+    )
 
     # Compute ready_for_roi based on answered required questions
     ready_for_roi = compute_ready_for_roi(discovery_profile.get("answers", {}), has_company=has_company)
@@ -89,7 +105,8 @@ async def update_discovery_profile(
     """Update the authenticated user's discovery profile.
 
     Updates fields like current question index, phase, answers,
-    ROI inputs, and product selections.
+    ROI inputs, and product selections. For company members, updates
+    the shared company discovery profile.
 
     Args:
         data: Fields to update.
@@ -110,22 +127,23 @@ async def update_discovery_profile(
         email=user.email,
     )
 
-    # Ensure discovery profile exists
-    await discovery_service.get_or_create(profile["id"])
+    # Resolve company context
+    company, company_id = await _resolve_company(profile["id"])
+    has_company = company is not None and company.get("name")
 
-    # Update discovery profile
-    discovery_profile = await discovery_service.update(profile["id"], data)
+    # Ensure discovery profile exists
+    await discovery_service.get_or_create(profile["id"], company_id=company_id)
+
+    # Update discovery profile (company-scoped when applicable)
+    discovery_profile = await discovery_service.update(
+        profile["id"], data, company_id=company_id
+    )
 
     if not discovery_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Discovery profile not found",
         )
-
-    # Check if user has a company (company_name can be derived from it)
-    company_service = CompanyService()
-    company = await company_service.get_user_company(profile["id"])
-    has_company = company is not None and company.get("name")
 
     # Compute ready_for_roi based on answered required questions
     ready_for_roi = compute_ready_for_roi(discovery_profile.get("answers", {}), has_company=has_company)
