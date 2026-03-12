@@ -92,11 +92,13 @@ class InvitationService(BaseService):
         if email_result.get("success"):
             logger.info("Invitation email sent to %s for company %s", data.email, company_name)
         else:
-            logger.warning(
+            error_detail = email_result.get("error", "Unknown error")
+            logger.error(
                 "Failed to send invitation email to %s: %s",
                 data.email,
-                email_result.get("error"),
+                error_detail,
             )
+            raise ValueError(f"Failed to deliver invitation email: {error_detail}")
 
         # Fire HubSpot contact creation for the invitee (fire-and-forget)
         if get_settings().hubspot_access_token:

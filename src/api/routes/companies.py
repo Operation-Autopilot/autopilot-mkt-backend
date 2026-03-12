@@ -235,7 +235,13 @@ async def create_invitation(
     await _check_owner_access(company_id, profile_id)
 
     service = InvitationService()
-    invitation = await service.create_invitation(company_id, data, profile_id)
+    try:
+        invitation = await service.create_invitation(company_id, data, profile_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        ) from e
     return InvitationResponse(**invitation)
 
 
