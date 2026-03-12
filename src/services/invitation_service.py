@@ -1,11 +1,13 @@
 """Invitation business logic service."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
 from src.api.middleware.error_handler import NotFoundError, ValidationError
+from src.core.config import get_settings
 from src.core.supabase import get_supabase_client
 from src.models.company import InvitationStatus
 from src.schemas.company import InvitationCreate
@@ -94,6 +96,16 @@ class InvitationService(BaseService):
                 "Failed to send invitation email to %s: %s",
                 data.email,
                 email_result.get("error"),
+            )
+
+        # Fire HubSpot contact creation for the invitee (fire-and-forget)
+        if get_settings().hubspot_access_token:
+            from src.services.hubspot_service import HubSpotService
+            asyncio.create_task(
+                HubSpotService().on_team_invite(
+                    email=data.email,
+                    company_name=company_name,
+                )
             )
 
         return invitation

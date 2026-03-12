@@ -176,6 +176,30 @@ class CheckoutService(BaseService):
         order = order_response.data[0]
         order_id = order["id"]
 
+        # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
+        hubspot_deal_id: str | None = None
+        if self.settings.hubspot_access_token and customer_email:
+            try:
+                from src.services.hubspot_service import HubSpotService
+                company_name: str | None = None
+                if profile_id:
+                    co = await self._execute_sync(
+                        self.client.table("companies")
+                        .select("name")
+                        .eq("owner_id", str(profile_id))
+                        .maybe_single()
+                    )
+                    if co.data:
+                        company_name = co.data.get("name")
+                hubspot_deal_id = await HubSpotService().on_checkout_initiated(
+                    email=customer_email,
+                    company_name=company_name,
+                    robot_name=robot["name"],
+                    amount_usd=total_cents / 100,
+                )
+            except Exception:
+                logger.exception("HubSpot checkout deal creation failed for order %s (non-fatal)", order_id)
+
         try:
             # Create Stripe Checkout Session
             stripe_mode = "payment" if payment_type == "purchase" else "subscription"
@@ -235,9 +259,11 @@ class CheckoutService(BaseService):
                 api_key=stripe_api_key,
             )
 
-            # Update order with Stripe session ID and test mode flag
+            # Update order with Stripe session ID, test mode flag, and HubSpot deal ID
             existing_metadata = order.get("metadata", {}) or {}
             merged_metadata = {**existing_metadata, "is_test_mode": use_test_mode}
+            if hubspot_deal_id:
+                merged_metadata["hubspot_deal_id"] = hubspot_deal_id
             query = self.client.table("orders").update({
                 "stripe_checkout_session_id": stripe_session.id,
                 "metadata": merged_metadata,
@@ -323,21 +349,17 @@ class CheckoutService(BaseService):
             logger.info("Order %s marked as %s", order_id, log_status)
             order = response.data[0]
 
-            # Fire HubSpot Closed Won task on successful card payment (fire-and-forget)
+            # HubSpot: move Lead deal to Closed Won (fire-and-forget)
             if log_status == "completed" and self.settings.hubspot_access_token:
-                from src.services.hubspot_service import HubSpotService
-                line_items = order.get("line_items") or []
-                robot_name = line_items[0].get("product_name", "") if line_items else ""
-                asyncio.create_task(
-                    HubSpotService().on_payment_completed(
-                        email=order.get("customer_email") or "",
-                        order_id=str(order.get("id", "")),
-                        robot_name=robot_name,
-                        total_cents=order.get("total_cents", 0),
-                        payment_provider="stripe",
-                        company_name=None,
+                hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
+                if hs_deal_id:
+                    from src.services.hubspot_service import HubSpotService
+                    asyncio.create_task(
+                        HubSpotService().on_deal_closed(
+                            deal_id=hs_deal_id,
+                            amount_usd=order.get("total_cents", 0) / 100,
+                        )
                     )
-                )
 
             return order
 

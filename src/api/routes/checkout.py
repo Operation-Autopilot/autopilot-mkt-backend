@@ -183,10 +183,42 @@ async def create_gynger_session(
             order_id=str(order_id),
         )
 
-        # Store Gynger application ID on the order
+        # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
+        hubspot_deal_id: str | None = None
+        from src.core.config import get_settings as _gs
+        if _gs().hubspot_access_token and data.customer_email:
+            try:
+                from src.services.hubspot_service import HubSpotService
+                company_name: str | None = None
+                if profile_id:
+                    co = await checkout_service._execute_sync(
+                        checkout_service.client.table("companies")
+                        .select("name")
+                        .eq("owner_id", str(profile_id))
+                        .maybe_single()
+                    )
+                    if co.data:
+                        company_name = co.data.get("name")
+                hubspot_deal_id = await HubSpotService().on_checkout_initiated(
+                    email=data.customer_email,
+                    company_name=company_name,
+                    robot_name=robot["name"],
+                    amount_usd=amount_cents / 100,
+                )
+            except Exception:
+                import logging as _log
+                _log.getLogger(__name__).exception(
+                    "HubSpot Gynger deal creation failed for order %s (non-fatal)", order_id
+                )
+
+        # Store Gynger application ID (and HubSpot deal ID) on the order
+        order_metadata_update: dict = {"gynger_application_id": gynger_result["application_id"]}
+        if hubspot_deal_id:
+            existing_meta = order.get("metadata") or {}
+            order_metadata_update["metadata"] = {**existing_meta, "hubspot_deal_id": hubspot_deal_id}
         await checkout_service._execute_sync(
             checkout_service.client.table("orders")
-            .update({"gynger_application_id": gynger_result["application_id"]})
+            .update(order_metadata_update)
             .eq("id", str(order_id))
         )
 
