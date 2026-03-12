@@ -385,8 +385,8 @@ class RecommendationService:
 
         scored: list[dict[str, Any]] = []
         for robot in candidates:
-            # Get base rule-based score and reasons
-            base_score, reasons = roi_service._score_robot_manual(robot, answers)
+            # Get base rule-based score and reasons (3-tuple: raw, display, reasons)
+            base_score, _display, reasons = roi_service._score_robot_manual(robot, answers)
 
             # Apply semantic similarity boost (up to 15 points)
             semantic_score = float(robot.get("_semantic_score", 0.5))

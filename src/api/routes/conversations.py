@@ -705,6 +705,21 @@ async def send_message(
             metadata=data.metadata,
         )
 
+    # Generate contextual chips for greenlight phase
+    if phase == ConversationPhase.GREENLIGHT and session_id:
+        try:
+            gl_session_service = SessionService()
+            gl_session_data = await gl_session_service.get_session_by_id(session_id)
+            gl_data = (gl_session_data or {}).get("greenlight", {}) or {}
+            if not gl_data.get("targetStartDate"):
+                chips.append("Set Target Date")
+            if not gl_data.get("teamMembers"):
+                chips.append("Invite Team Members")
+            if gl_data.get("targetStartDate") and gl_data.get("teamMembers"):
+                chips.append("Proceed to Checkout")
+        except Exception as e:
+            logger.warning("Failed to generate greenlight chips: %s", e)
+
     # Run profile extraction inline so the frontend's session query refetch
     # gets the updated answers immediately. Previously this was a BackgroundTasks
     # callback (BUG-47) which caused a 1-turn delay: the frontend refetched

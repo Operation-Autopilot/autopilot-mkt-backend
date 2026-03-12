@@ -104,6 +104,7 @@ export default defineConfig({
             { text: 'Frontend Tests', link: '/testing/frontend' },
             { text: 'Patterns', link: '/testing/patterns' },
             { text: 'End-User Scripts', link: '/testing/end-user-scripts' },
+            { text: 'Priority Matrix', link: '/testing/priority-matrix' },
           ],
         },
       ],

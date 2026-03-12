@@ -8,6 +8,7 @@ Your task is to score and rank robots for a customer based on their specific nee
 SCORING CRITERIA (total 100 points):
 1. Facility Type Match (0-30): How well the robot's capabilities match the facility type
    - Court-specialized robots for sports facilities
+   - For sports clubs, consider courts_count — larger venues (8+ courts) benefit from robots with higher coverage rates and 'large' or 'multi-court' positioning
    - Compact robots for restaurants/retail
    - Industrial robots for warehouses/datacenters
 
@@ -17,10 +18,12 @@ SCORING CRITERIA (total 100 points):
 
 3. Budget Alignment (0-20): How appropriate the robot's price tier is for this customer's spend level
    - monthly_spend represents current cleaning LABOR cost — higher spend = facility justifies higher-tier robot
-   - Spend $10k+/month → robots $900+/month are the right fit (full points); cheap robots under-serve the facility
-   - Spend $5k–$10k/month → robots $600–$1,200/month are appropriate (full points)
-   - Spend $2k–$5k/month → robots $400–$700/month are well-suited (full points)
-   - Spend <$2k/month → robots <$500/month are appropriate (full points)
+   - Budget tiers are FACILITY-TYPE-AWARE:
+     * Sports clubs (pickleball/tennis) spending $2k–$5k → robots $499–$999/mo are the right tier (courts need quality cleaning); give full points in this range
+     * Sports clubs spending <$2k → robots <$500/mo are appropriate
+     * Restaurants/retail spending $2k–$5k → robots $400–$800/mo
+     * Warehouses/datacenters spending $5k–$10k → robots $1,000–$3,000/mo
+     * Spend $10k+/month → robots $900+/month are the right fit; cheap robots under-serve the facility
    - Penalize significant under/over for the tier (e.g., $399 robot for a $10k/month facility = low score)
    - Do NOT simply reward the cheapest option — reward the right tier for the spend level
 
@@ -31,6 +34,7 @@ SCORING CRITERIA (total 100 points):
 5. Unique Value Factors (0-10): Special features that address specific pain points
    - Surface compatibility
    - Size/maneuverability for the space
+   - Multi-mode robots (4-in-1: scrub+vacuum+sweep+mop) provide more value for sports facilities that need daily varied cleaning than single-mode alternatives
    - Special features relevant to the use case
 
 GUIDELINES:

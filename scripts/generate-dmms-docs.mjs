@@ -27,6 +27,7 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, '..');
 const DB_PATH = path.resolve(ROOT, 'dmms', 'dmms.db');
 const OUT_DIR = path.resolve(ROOT, 'docs', 'status');
+const TESTING_DIR = path.resolve(ROOT, 'docs', 'testing');
 const STATS_DIR = path.resolve(ROOT, 'docs', '.vitepress', 'data');
 
 // Backend source root (same repo)
@@ -608,6 +609,200 @@ ${table}
 }
 
 // ---------------------------------------------------------------------------
+// Priority Matrix Generator
+// ---------------------------------------------------------------------------
+
+/**
+ * Scoring weights for the priority matrix formula.
+ * Score = (Revenue × 0.30) + (BugDensity × 0.25) + (BlastRadius × 0.20) + (UserFrequency × 0.15) + (RegressionRisk × 0.10)
+ */
+const SCORE_WEIGHTS = {
+  revenue: 0.30,
+  bugDensity: 0.25,
+  blastRadius: 0.20,
+  userFrequency: 0.15,
+  regressionRisk: 0.10,
+};
+
+const SMOKE_THRESHOLD = 70;
+const REGRESSION_THRESHOLD = 45;
+
+/**
+ * Static factor scores for each TC. These represent Revenue Impact, Blast Radius,
+ * User Frequency, and base Regression Risk. Bug Density is computed dynamically.
+ *
+ * Format: tcNumber → { revenue, blastRadius, userFrequency, regressionRisk }
+ */
+const TC_FACTORS = {
+  1:  { revenue: 25, blastRadius: 100, userFrequency: 100, regressionRisk: 20 },
+  2:  { revenue: 25, blastRadius: 80, userFrequency: 90, regressionRisk: 60 },
+  3:  { revenue: 10, blastRadius: 60, userFrequency: 90, regressionRisk: 40 },
+  4:  { revenue: 5, blastRadius: 30, userFrequency: 80, regressionRisk: 10 },
+  5:  { revenue: 10, blastRadius: 40, userFrequency: 60, regressionRisk: 10 },
+  6:  { revenue: 30, blastRadius: 70, userFrequency: 85, regressionRisk: 80 },
+  7:  { revenue: 30, blastRadius: 60, userFrequency: 30, regressionRisk: 40 },
+  8:  { revenue: 30, blastRadius: 60, userFrequency: 30, regressionRisk: 30 },
+  9:  { revenue: 25, blastRadius: 50, userFrequency: 20, regressionRisk: 10 },
+  10: { revenue: 25, blastRadius: 50, userFrequency: 20, regressionRisk: 10 },
+  11: { revenue: 50, blastRadius: 90, userFrequency: 90, regressionRisk: 60 },
+  12: { revenue: 30, blastRadius: 60, userFrequency: 85, regressionRisk: 30 },
+  13: { revenue: 40, blastRadius: 55, userFrequency: 40, regressionRisk: 60 },
+  14: { revenue: 40, blastRadius: 55, userFrequency: 40, regressionRisk: 50 },
+  15: { revenue: 25, blastRadius: 40, userFrequency: 25, regressionRisk: 10 },
+  16: { revenue: 25, blastRadius: 50, userFrequency: 40, regressionRisk: 20 },
+  17: { revenue: 15, blastRadius: 55, userFrequency: 30, regressionRisk: 30 },
+  18: { revenue: 30, blastRadius: 50, userFrequency: 60, regressionRisk: 30 },
+  19: { revenue: 35, blastRadius: 45, userFrequency: 40, regressionRisk: 40 },
+  20: { revenue: 15, blastRadius: 35, userFrequency: 30, regressionRisk: 10 },
+  21: { revenue: 10, blastRadius: 25, userFrequency: 15, regressionRisk: 10 },
+  22: { revenue: 25, blastRadius: 55, userFrequency: 90, regressionRisk: 20 },
+  23: { revenue: 10, blastRadius: 30, userFrequency: 40, regressionRisk: 10 },
+  24: { revenue: 10, blastRadius: 30, userFrequency: 35, regressionRisk: 10 },
+  25: { revenue: 20, blastRadius: 40, userFrequency: 60, regressionRisk: 20 },
+  26: { revenue: 30, blastRadius: 50, userFrequency: 60, regressionRisk: 10 },
+  27: { revenue: 5, blastRadius: 20, userFrequency: 20, regressionRisk: 10 },
+  28: { revenue: 45, blastRadius: 65, userFrequency: 80, regressionRisk: 80 },
+  29: { revenue: 40, blastRadius: 50, userFrequency: 75, regressionRisk: 60 },
+  30: { revenue: 35, blastRadius: 40, userFrequency: 60, regressionRisk: 30 },
+  31: { revenue: 40, blastRadius: 50, userFrequency: 70, regressionRisk: 20 },
+  32: { revenue: 35, blastRadius: 45, userFrequency: 50, regressionRisk: 20 },
+  33: { revenue: 25, blastRadius: 40, userFrequency: 40, regressionRisk: 20 },
+  34: { revenue: 20, blastRadius: 25, userFrequency: 15, regressionRisk: 30 },
+  35: { revenue: 80, blastRadius: 65, userFrequency: 50, regressionRisk: 40 },
+  36: { revenue: 100, blastRadius: 75, userFrequency: 50, regressionRisk: 70 },
+  37: { revenue: 100, blastRadius: 80, userFrequency: 50, regressionRisk: 80 },
+  38: { revenue: 95, blastRadius: 60, userFrequency: 40, regressionRisk: 60 },
+  39: { revenue: 100, blastRadius: 65, userFrequency: 40, regressionRisk: 50 },
+  40: { revenue: 60, blastRadius: 35, userFrequency: 20, regressionRisk: 10 },
+  41: { revenue: 40, blastRadius: 30, userFrequency: 20, regressionRisk: 20 },
+  42: { revenue: 20, blastRadius: 20, userFrequency: 15, regressionRisk: 10 },
+  43: { revenue: 80, blastRadius: 85, userFrequency: 60, regressionRisk: 60 },
+  44: { revenue: 80, blastRadius: 85, userFrequency: 60, regressionRisk: 60 },
+  45: { revenue: 50, blastRadius: 40, userFrequency: 30, regressionRisk: 10 },
+  46: { revenue: 85, blastRadius: 80, userFrequency: 50, regressionRisk: 80 },
+  47: { revenue: 90, blastRadius: 75, userFrequency: 50, regressionRisk: 60 },
+  48: { revenue: 50, blastRadius: 55, userFrequency: 30, regressionRisk: 50 },
+  49: { revenue: 30, blastRadius: 60, userFrequency: 50, regressionRisk: 50 },
+  50: { revenue: 40, blastRadius: 65, userFrequency: 45, regressionRisk: 60 },
+  51: { revenue: 55, blastRadius: 55, userFrequency: 30, regressionRisk: 30 },
+  52: { revenue: 20, blastRadius: 40, userFrequency: 30, regressionRisk: 10 },
+  53: { revenue: 15, blastRadius: 30, userFrequency: 15, regressionRisk: 10 },
+  54: { revenue: 25, blastRadius: 45, userFrequency: 60, regressionRisk: 30 },
+  55: { revenue: 30, blastRadius: 50, userFrequency: 55, regressionRisk: 20 },
+  56: { revenue: 50, blastRadius: 45, userFrequency: 40, regressionRisk: 10 },
+  57: { revenue: 10, blastRadius: 25, userFrequency: 30, regressionRisk: 10 },
+  58: { revenue: 30, blastRadius: 40, userFrequency: 50, regressionRisk: 10 },
+  59: { revenue: 15, blastRadius: 30, userFrequency: 10, regressionRisk: 20 },
+  60: { revenue: 20, blastRadius: 35, userFrequency: 25, regressionRisk: 10 },
+  61: { revenue: 90, blastRadius: 70, userFrequency: 30, regressionRisk: 40 },
+  62: { revenue: 10, blastRadius: 25, userFrequency: 10, regressionRisk: 20 },
+};
+
+function generatePriorityMatrix(db, ts) {
+  const mappingPath = path.join(TESTING_DIR, 'bug-tc-mapping.json');
+  if (!fs.existsSync(mappingPath)) {
+    console.log('  Skipping priority matrix (no bug-tc-mapping.json)');
+    return;
+  }
+
+  const bugTcMapping = JSON.parse(fs.readFileSync(mappingPath, 'utf-8'));
+
+  // Build reverse mapping: TC → [bugIds]
+  const tcBugs = {};
+  for (const [bugId, tcs] of Object.entries(bugTcMapping)) {
+    for (const tc of tcs) {
+      if (!tcBugs[tc]) tcBugs[tc] = [];
+      tcBugs[tc].push(bugId);
+    }
+  }
+
+  // Query DMMS DB for open bug counts by category prefix
+  const openBugCounts = {};
+  try {
+    const issues = db.prepare(
+      "SELECT title, status FROM issues WHERE status NOT IN ('resolved', 'closed')"
+    ).all();
+    // Count open bugs per category prefix (A, B, C, D, E, F, G)
+    for (const issue of issues) {
+      const match = issue.title.match(/^([A-G])-\d+/);
+      if (match) {
+        const prefix = match[1];
+        openBugCounts[prefix] = (openBugCounts[prefix] || 0) + 1;
+      }
+    }
+  } catch {
+    // Issues table may use different schema — fall back to mapping counts
+  }
+
+  // Compute bug density score for each TC based on open bugs in its area
+  function computeBugDensity(tcNum) {
+    const bugs = tcBugs[tcNum] || [];
+    // Count how many of those bugs are still open (not resolved in mapping status)
+    // Use a simple heuristic: more mapped bugs = higher density
+    const count = bugs.length;
+    if (count >= 5) return 100;
+    if (count >= 3) return 75;
+    if (count >= 2) return 50;
+    if (count >= 1) return 25;
+    return 0;
+  }
+
+  // Compute scores for all 62 TCs
+  const scored = [];
+  for (let tc = 1; tc <= 62; tc++) {
+    const factors = TC_FACTORS[tc];
+    if (!factors) continue;
+
+    const bugDensity = computeBugDensity(tc);
+    const score = Math.round(
+      factors.revenue * SCORE_WEIGHTS.revenue +
+      bugDensity * SCORE_WEIGHTS.bugDensity +
+      factors.blastRadius * SCORE_WEIGHTS.blastRadius +
+      factors.userFrequency * SCORE_WEIGHTS.userFrequency +
+      factors.regressionRisk * SCORE_WEIGHTS.regressionRisk
+    );
+
+    let tier = 'Full';
+    if (score >= SMOKE_THRESHOLD) tier = 'Smoke';
+    else if (score >= REGRESSION_THRESHOLD) tier = 'Regression';
+
+    scored.push({
+      tc,
+      score,
+      tier,
+      bugs: (tcBugs[tc] || []).sort(),
+    });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const smokeTCs = scored.filter(s => s.tier === 'Smoke');
+  const regressionTCs = scored.filter(s => s.tier === 'Regression');
+  const totalBugsCovered = new Set(scored.flatMap(s => s.bugs)).size;
+  const allMappedBugs = new Set(Object.keys(bugTcMapping));
+  const bugsWithCoverage = new Set();
+  for (const s of scored) {
+    for (const b of s.bugs) bugsWithCoverage.add(b);
+  }
+  const uncoveredBugs = [...allMappedBugs].filter(b => !bugsWithCoverage.has(b));
+
+  // Write summary JSON for Vue components
+  const summaryData = {
+    generatedAt: new Date().toISOString(),
+    totalTCs: scored.length,
+    smokeTCs: smokeTCs.length,
+    regressionTCs: smokeTCs.length + regressionTCs.length,
+    totalBugsCovered,
+    scores: scored.map(s => ({ tc: s.tc, score: s.score, tier: s.tier, bugs: s.bugs })),
+  };
+
+  fs.mkdirSync(STATS_DIR, { recursive: true });
+  const jsonDest = path.join(STATS_DIR, 'priority-matrix.json');
+  fs.writeFileSync(jsonDest, JSON.stringify(summaryData, null, 2), 'utf-8');
+  console.log(`  Generated ${path.relative(ROOT, jsonDest)}`);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -640,7 +835,10 @@ function main() {
   const inventory = computeServiceInventory();
   generateServicesPage(inventory, ts);
 
-  // 4. Write JSON data for Vue components
+  // 4. Generate priority matrix
+  generatePriorityMatrix(db, ts);
+
+  // 5. Write JSON data for Vue components
   writeStatsJson(db);
   writeHierarchyJson(db);
 
