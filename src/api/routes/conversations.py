@@ -21,6 +21,7 @@ from src.schemas.message import (
     MessageWithAgentResponse,
     TeamMemberExtracted,
 )
+from src.schemas.discovery import DiscoveryProfileUpdate
 from src.services.extraction_constants import REQUIRED_QUESTION_KEYS
 from src.services.agent_service import AgentService
 from src.services.company_service import CompanyService
@@ -726,6 +727,7 @@ async def send_message(
     # session data before extraction had written to the DB. The gpt-4o-mini
     # extraction call adds ~200-400ms, acceptable since the user is already
     # waiting for the main LLM response (~1-2s).
+    extracted_answers: dict | None = None
     try:
         extraction_service = ProfileExtractionService()
         extraction_result = await extraction_service.extract_and_update(
@@ -740,6 +742,7 @@ async def send_message(
                 conversation_id,
                 extraction_result.get("keys_extracted", []),
             )
+            extracted_answers = extraction_result.get("extracted_answers")
     except Exception as e:
         logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
 
@@ -756,9 +759,10 @@ async def send_message(
             if extracted_members or extracted_date:
                 invitations_sent: list[str] = []
 
-                # Persist to session greenlight data
-                session_service = SessionService()
+                # Persist greenlight data
                 if session_id:
+                    # Anonymous → persist to sessions table
+                    session_service = SessionService()
                     session_data = await session_service.get_session_by_id(session_id)
                     current_gl = (session_data or {}).get("greenlight", {}) or {}
 
@@ -780,6 +784,38 @@ async def send_message(
                     if updates:
                         merged_gl = {**current_gl, **updates}
                         await session_service.update_session(session_id, {"greenlight": merged_gl})
+                elif profile_id:
+                    # Authenticated → persist to discovery_profiles table
+                    dp_service = DiscoveryProfileService()
+                    company_service = CompanyService()
+                    company = await company_service.get_user_company(profile_id)
+                    company_id = UUID(company["id"]) if company else None
+
+                    existing = await dp_service.get_for_user(profile_id, company_id)
+                    current_gl = (existing or {}).get("greenlight", {}) or {}
+
+                    updates: dict = {}
+                    if extracted_date:
+                        updates["target_start_date"] = extracted_date
+
+                    if extracted_members:
+                        existing_members = current_gl.get("team_members", [])
+                        existing_emails = {m.get("email") for m in existing_members}
+                        new_members = [
+                            {"email": m["email"], "name": m.get("name", ""), "role": m.get("role", "")}
+                            for m in extracted_members
+                            if m["email"] not in existing_emails
+                        ]
+                        if new_members:
+                            updates["team_members"] = existing_members + new_members
+
+                    if updates:
+                        merged_gl = {**current_gl, **updates}
+                        await dp_service.update(
+                            profile_id,
+                            DiscoveryProfileUpdate(greenlight=merged_gl),
+                            company_id=company_id,
+                        )
 
                 # Send invitations if user is authenticated with a company
                 if extracted_members and profile_id:
@@ -822,6 +858,7 @@ async def send_message(
         chips=chips,
         discovery_state=discovery_state,
         greenlight_actions=greenlight_actions,
+        extracted_answers=extracted_answers,
     )
 
 

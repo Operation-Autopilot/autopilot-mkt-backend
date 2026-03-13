@@ -104,8 +104,10 @@ class ProfileExtractionService:
             if not validated_answers:
                 return {"extracted_count": 0, "reason": "No valid answers extracted"}
 
-            # 5. Merge and update
-            merged_answers = {**current_answers, **validated_answers}
+            # 5. Resolve cost-field conflicts, then merge
+            merged_answers = self._resolve_cost_conflicts(
+                current_answers, validated_answers
+            )
 
             await self._update_target(
                 session_id=session_id,
@@ -125,6 +127,7 @@ class ProfileExtractionService:
                 "extracted_count": len(validated_answers),
                 "confidence": extraction_result.get("extraction_confidence", "medium"),
                 "keys_extracted": list(validated_answers.keys()),
+                "extracted_answers": validated_answers,
             }
 
         except Exception as e:
@@ -212,6 +215,42 @@ class ProfileExtractionService:
         except json.JSONDecodeError as e:
             logger.error("JSON decode error in extraction: %s", str(e))
             return {"answers": {}, "error": str(e)}
+
+    @staticmethod
+    def _resolve_cost_conflicts(
+        current_answers: dict[str, Any],
+        new_answers: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resolve mutually-exclusive cost-field conflicts before merging.
+
+        Two cost approaches exist:
+          - Direct spend: ``monthly_spend`` (user stated a total)
+          - Derived spend: ``hourly_rate``, ``staff_count`` (components)
+
+        When the user switches approach the stale fields must be cleared so
+        ``roi_service.derive_roi_inputs()`` picks the correct tier.
+        """
+        merged = {**current_answers, **new_answers}
+
+        has_new_monthly = (
+            "monthly_spend" in new_answers
+            and new_answers["monthly_spend"].get("value", "").lower()
+            not in ("", "unknown", "don't know")
+        )
+        has_new_derived = "hourly_rate" in new_answers or "staff_count" in new_answers
+
+        if has_new_monthly and not has_new_derived:
+            # User gave a direct total → clear derived cost fields
+            merged.pop("hourly_rate", None)
+            merged.pop("staff_count", None)
+        elif has_new_derived and not has_new_monthly:
+            # User gave hourly/staff data → invalidate stale monthly_spend
+            if "monthly_spend" in merged:
+                stale = dict(merged["monthly_spend"])
+                stale["value"] = "unknown"
+                merged["monthly_spend"] = stale
+
+        return merged
 
     def _validate_and_enrich_answers(
         self,

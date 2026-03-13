@@ -1481,6 +1481,12 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         for msg in recent_messages:
             messages.append({"role": msg["role"], "content": msg["content"]})
 
+        # Ensure current message is always the last user turn.
+        # fetch_conversation_history runs in parallel with store_user_message,
+        # so the DB SELECT may miss the just-INSERTed row.
+        if not recent_messages or recent_messages[-1].get("content") != user_message:
+            messages.append({"role": "user", "content": user_message})
+
         # Determine budget key and check token budget
         budget_key: str | None = None
         is_authenticated = False

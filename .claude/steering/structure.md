@@ -87,6 +87,7 @@ autopilot-mkt-backend/
 │   ├── supabase.py
 │   ├── token_budget.py
 ├── scripts/
+│   ├── deactivate_robots.py
 │   ├── debug_conversations.py
 │   ├── deploy-cloud-run.sh
 │   ├── dev-server.sh
@@ -106,8 +107,9 @@ autopilot-mkt-backend/
 │   ├── upload_new_images.py
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (26 files)
-    └── ...026_company_scoped_discovery_profiles.sql  ← last applied
+│   ├── verify_secrets.py
+└── supabase/migrations/  (27 files)
+    └── ...027_robot_spec_corrections.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -309,4 +311,5 @@ class {Resource}Response({Resource}Base):
 - `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
 - `025_mt1_vac_image_updates.sql` — MT1 Vac image corrections
 - `026_company_scoped_discovery_profiles.sql` — Make discovery profiles company-scoped
+- `027_robot_spec_corrections.sql` — 027_robot_spec_corrections.sql
 <!-- AUTO-MIGRATIONS:END -->

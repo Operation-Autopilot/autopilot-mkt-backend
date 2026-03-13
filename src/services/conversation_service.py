@@ -517,7 +517,8 @@ class ConversationService(BaseService):
     ) -> tuple[dict[str, Any], bool]:
         """Get the current conversation for a user or create one.
 
-        Returns the most recent conversation for the user's profile.
+        Returns the conversation with the most message history for the user.
+        Falls back to most recently updated if message counts are equal.
         If no conversation exists, creates one with the provided context.
 
         Args:
@@ -528,19 +529,30 @@ class ConversationService(BaseService):
         Returns:
             tuple: (conversation_data, is_new) where is_new indicates if created.
         """
-        # Try to get most recent conversation for this profile
+        # Fetch recent conversations with message counts to prefer the one
+        # with real history (avoids returning a near-empty transferred
+        # anonymous conversation that has a fresher updated_at).
         query = (
             self.client.table("conversations")
-            .select("*")
+            .select("*, messages(count)")
             .eq("profile_id", str(profile_id))
             .order("updated_at", desc=True)
-            .limit(1)
+            .limit(5)
         )
         response = await self._execute_sync(query)
 
         if response.data:
-            # Return existing conversation
-            return response.data[0], False
+            # Pick the conversation with the most messages, breaking ties by updated_at
+            best = max(
+                response.data,
+                key=lambda c: (
+                    c.get("messages", [{"count": 0}])[0].get("count", 0),
+                    c.get("updated_at", ""),
+                ),
+            )
+            # Strip the nested messages count before returning
+            best.pop("messages", None)
+            return best, False
 
         # Create new conversation with context
         metadata = context or {}

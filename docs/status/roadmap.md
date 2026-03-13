@@ -26,14 +26,22 @@ title: Roadmap
 
 ### Checkout & Payments
 - ✅ Stripe monthly lease subscription (`mode: "subscription"`)
-- ✅ Stripe full purchase (one-time)
+- ✅ Stripe full purchase (one-time, via `price_data` inline)
 - ✅ Gynger B2B financing (`POST /checkout/gynger-session`)
 - ✅ Stripe + Gynger webhooks with HMAC signature verification
 - ✅ Test account mode (`is_test_account` flag, uses `STRIPE_SECRET_KEY_TEST`)
 - ✅ All 13 robots synced to Stripe production
 
+### Recent Additions (Post-Launch)
+- ✅ Company-scoped discovery profiles (migration 026 — shared within company)
+- ✅ Court surface types for pickleball robots (CushionX, Acrylic, Concrete — migration 024)
+- ✅ HubSpot CRM integration overhaul (contact/deal creation on signup & payment)
+- ✅ Greenlight extraction service (team invites + target dates from conversation)
+- ✅ Atomic signup + session claim (`POST /auth/signup-with-session`)
+- ✅ 9 robots marked inactive (migration 021), OEM images for all 22 robots
+
 ### Testing
-- ✅ Playwright E2E suite — 689 tests, 39 files across journeys/nonlinear/payment/procurement/multiuser
+- ✅ Playwright E2E suite — 97 test files across 7 categories (integration, journeys, nonlinear, payment, procurement, multiuser, root sanity)
 - ✅ 16 pre-existing E2E specs (auth, chat, discovery, ROI, greenlight, session, mobile)
 - ✅ Vitest unit tests for components and services
 
@@ -41,13 +49,13 @@ title: Roadmap
 
 ## In Progress / Planned
 
-### Admin Layer
+### Admin Layer *(feature/adminPortal branch — not merged to dev)*
 - 🔲 `src/api/routes/admin.py` — admin-only endpoints
 - 🔲 `src/api/routes/shares.py` — public share link endpoints
-- 🔲 `src/services/hubspot_service.py` — HubSpot OAuth + meetings API
+- ✅ `src/services/hubspot_service.py` — HubSpot CRM integration (exists on dev, admin routes on feature branch)
 - 🔲 `src/services/fireflies_service.py` — Fireflies GraphQL meeting extraction
-- 🔲 Migration 015: `hubspot_connections` table
-- 🔲 Migration 016: `session_shares` table
+- 🔲 Migration for `hubspot_connections` table (not yet created)
+- 🔲 Migration for `session_shares` table (not yet created)
 - 🔲 Frontend: `AdminPanel`, `HubSpotPanel`, `FirefliesPanel`, `SharedROIPage`
 
 ### Procurement Paths
