@@ -97,7 +97,7 @@ class AuthService:
                 logger.info("Company created for user %s: %s", user.id, company_id)
 
             # Fire HubSpot Lead creation (fire-and-forget — never blocks signup)
-            if self.settings.hubspot_access_token:
+            if self.settings.hubspot_access_token.get_secret_value():
                 from src.services.hubspot_service import HubSpotService
                 asyncio.create_task(
                     HubSpotService().on_signup(

@@ -349,5 +349,5 @@ def get_openai_client() -> TimedOpenAIClient:
         TimedOpenAIClient: OpenAI client instance with performance monitoring.
     """
     settings = get_settings()
-    raw_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    raw_client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
     return TimedOpenAIClient(raw_client)

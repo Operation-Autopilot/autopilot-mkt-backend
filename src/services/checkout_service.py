@@ -224,7 +224,7 @@ class CheckoutService(BaseService):
 
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
-        if self.settings.hubspot_access_token and customer_email:
+        if self.settings.hubspot_access_token.get_secret_value() and customer_email:
             try:
                 from src.services.hubspot_service import HubSpotService
                 company_name: str | None = None
@@ -405,7 +405,7 @@ class CheckoutService(BaseService):
             order = response.data[0]
 
             # HubSpot: move Lead deal to Closed Won (fire-and-forget)
-            if log_status == "completed" and self.settings.hubspot_access_token:
+            if log_status == "completed" and self.settings.hubspot_access_token.get_secret_value():
                 hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
                 if hs_deal_id:
                     from src.services.hubspot_service import HubSpotService
@@ -507,7 +507,7 @@ class CheckoutService(BaseService):
             order = response.data[0]
 
             # HubSpot: move Lead deal to Closed Won (fire-and-forget)
-            if self.settings.hubspot_access_token:
+            if self.settings.hubspot_access_token.get_secret_value():
                 hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
                 if hs_deal_id:
                     from src.services.hubspot_service import HubSpotService
@@ -724,12 +724,14 @@ class CheckoutService(BaseService):
         secrets_to_try = []
 
         # Try production secret first
-        if self.settings.stripe_webhook_secret:
-            secrets_to_try.append((self.settings.stripe_webhook_secret, False))
+        prod_secret = self.settings.stripe_webhook_secret.get_secret_value()
+        if prod_secret:
+            secrets_to_try.append((prod_secret, False))
 
         # Then try test secret
-        if self.settings.stripe_webhook_secret_test:
-            secrets_to_try.append((self.settings.stripe_webhook_secret_test, True))
+        test_secret = self.settings.stripe_webhook_secret_test.get_secret_value()
+        if test_secret:
+            secrets_to_try.append((test_secret, True))
 
         if not secrets_to_try:
             raise ValueError("Stripe webhook secret is not configured. Please set STRIPE_WEBHOOK_SECRET environment variable.")

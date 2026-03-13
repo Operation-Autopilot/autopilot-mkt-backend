@@ -115,7 +115,11 @@ async def get_my_session(auth: DualAuth) -> SessionResponse:
     answers = session.get("answers", {})
     ready_for_roi = compute_session_ready_for_roi(answers)
 
-    return SessionResponse(**session, ready_for_roi=ready_for_roi)
+    # Exclude session_token from DB row — it contains the hash, not the raw
+    # token.  Exposing the hash would let the frontend store it via the
+    # body-fallback path, which would break session claiming.
+    session_fields = {k: v for k, v in session.items() if k != "session_token"}
+    return SessionResponse(**session_fields, session_token=None, ready_for_roi=ready_for_roi)
 
 
 @router.put(

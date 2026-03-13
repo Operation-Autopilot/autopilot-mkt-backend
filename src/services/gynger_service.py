@@ -43,7 +43,7 @@ class GyngerService(BaseService):
         Note: Gynger uses plain Authorization without a 'Bearer' prefix.
         """
         return {
-            "Authorization": self.settings.gynger_api_key,
+            "Authorization": self.settings.gynger_api_key.get_secret_value(),
             "Content-Type": "application/json",
         }
 
@@ -74,7 +74,7 @@ class GyngerService(BaseService):
             ValueError: If Gynger API key is not configured or response is unexpected.
             httpx.HTTPStatusError: If Gynger API returns an error response.
         """
-        if not self.settings.gynger_api_key:
+        if not self.settings.gynger_api_key.get_secret_value():
             raise ValueError(
                 "Gynger is not configured. Please set GYNGER_API_KEY environment variable."
             )
@@ -134,12 +134,12 @@ class GyngerService(BaseService):
         Raises:
             ValueError: If webhook secret is not configured or the header doesn't match.
         """
-        webhook_secret = self.settings.gynger_webhook_secret
+        webhook_secret = self.settings.gynger_webhook_secret.get_secret_value()
         if not webhook_secret:
             raise ValueError(
                 "GYNGER_WEBHOOK_SECRET is not configured. Cannot verify webhook."
             )
-        if auth_header != webhook_secret:
+        if auth_header != webhook_secret:  # TODO: replace with hmac.compare_digest when Gynger goes live
             raise ValueError("Invalid Gynger webhook Authorization header")
 
     async def handle_offer_status_updated(self, event: dict) -> dict | None:
@@ -213,7 +213,7 @@ class GyngerService(BaseService):
             try:
                 from src.core.config import get_settings as _gs
                 from src.services.hubspot_service import HubSpotService
-                if _gs().hubspot_access_token:
+                if _gs().hubspot_access_token.get_secret_value():
                     hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
                     if hs_deal_id:
                         asyncio.create_task(

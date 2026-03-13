@@ -26,7 +26,22 @@ create_secret() {
     local env_var=$3
 
     if [ -f .env ] && grep -q "^${env_var}=" .env; then
-        local secret_value=$(grep "^${env_var}=" .env | cut -d '=' -f2- | sed 's/#.*//' | tr -d '"' | tr -d "'" | xargs)
+        # Extract value after the first '=', strip inline comments, trim whitespace.
+        # Only remove SURROUNDING quotes (first+last char) — not interior quotes,
+        # which are significant for JSON values like SUPABASE_SIGNING_KEY_JWK.
+        local raw_value
+        raw_value=$(grep "^${env_var}=" .env | cut -d '=' -f2- | sed 's/#.*//')
+        # Trim leading/trailing whitespace
+        raw_value=$(echo "$raw_value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        # Remove surrounding quotes only (single or double)
+        local secret_value
+        if [[ "$raw_value" =~ ^\"(.*)\"$ ]]; then
+            secret_value="${BASH_REMATCH[1]}"
+        elif [[ "$raw_value" =~ ^\'(.*)\'$ ]]; then
+            secret_value="${BASH_REMATCH[1]}"
+        else
+            secret_value="$raw_value"
+        fi
         echo "📝 Creating/updating secret: ${secret_name}"
         # Use printf '%s' (not echo) to avoid adding a trailing newline to the secret value.
         # A trailing newline in a secret (e.g. API key) will make Authorization headers

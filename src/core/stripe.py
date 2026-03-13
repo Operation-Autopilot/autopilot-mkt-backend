@@ -16,8 +16,8 @@ def configure_stripe() -> None:
     If Stripe keys are not configured, Stripe operations will fail with clear errors.
     """
     settings = get_settings()
-    if settings.stripe_secret_key:
-        stripe.api_key = settings.stripe_secret_key
+    if settings.stripe_secret_key.get_secret_value():
+        stripe.api_key = settings.stripe_secret_key.get_secret_value()
     else:
         logger.warning("Stripe secret key not configured. Stripe features will not work.")
 
@@ -53,10 +53,10 @@ def get_stripe_api_key(use_test_mode: bool | None = None) -> str:
     # Auto-detect from environment if not specified
     if use_test_mode is None:
         use_test_mode = settings.is_stripe_test_mode
-    if use_test_mode and settings.stripe_secret_key_test:
-        api_key = settings.stripe_secret_key_test
+    if use_test_mode and settings.stripe_secret_key_test.get_secret_value():
+        api_key = settings.stripe_secret_key_test.get_secret_value()
     else:
-        api_key = settings.stripe_secret_key
+        api_key = settings.stripe_secret_key.get_secret_value()
     if not api_key:
         raise ValueError("Stripe API key not configured. Set STRIPE_SECRET_KEY in environment.")
     return api_key

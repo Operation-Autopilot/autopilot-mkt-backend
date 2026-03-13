@@ -11,6 +11,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from src.api.middleware.error_handler import error_handler_middleware
 from src.api.middleware.latency_logging import latency_logging_with_stats_middleware
 from src.api.middleware.request_size import request_size_limit_middleware
+from src.api.middleware.security_headers import security_headers_middleware
 from src.api.routes import (
     auth,
     companies,
@@ -104,7 +105,25 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Configure CORS
+    # Middleware ordering: In Starlette, the LAST add_middleware call creates
+    # the OUTERMOST layer. CORSMiddleware must be outermost so its headers
+    # (Access-Control-Expose-Headers, etc.) are added to the final response
+    # and never stripped by inner BaseHTTPMiddleware layers.
+    # Response flow: route → size_limit → latency → error_handler → security_headers → CORS
+
+    # Add request size limit middleware (innermost - rejects oversized requests early)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=request_size_limit_middleware)
+
+    # Add latency logging middleware (tracks request timing)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=latency_logging_with_stats_middleware)
+
+    # Add error handler middleware (catches all errors from inner layers)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=error_handler_middleware)
+
+    # Add security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.)
+    app.add_middleware(BaseHTTPMiddleware, dispatch=security_headers_middleware)
+
+    # Configure CORS (outermost - headers always present on final response)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
@@ -113,15 +132,6 @@ def create_app() -> FastAPI:
         allow_headers=["content-type", "authorization", "x-session-token", "x-request-id"],
         expose_headers=["x-session-token"],
     )
-
-    # Add error handler middleware (outermost - catches all errors)
-    app.add_middleware(BaseHTTPMiddleware, dispatch=error_handler_middleware)
-
-    # Add latency logging middleware (tracks request timing)
-    app.add_middleware(BaseHTTPMiddleware, dispatch=latency_logging_with_stats_middleware)
-
-    # Add request size limit middleware (rejects oversized requests early)
-    app.add_middleware(BaseHTTPMiddleware, dispatch=request_size_limit_middleware)
 
     # Mount health routes at root level (no prefix)                                                                                          
     app.include_router(health.router)
@@ -162,10 +172,12 @@ def create_app() -> FastAPI:
 
     app.include_router(api_v1_router)
 
-    # Always-available OpenAPI schema for tooling (export-openapi.mjs, docs generation)
-    @app.get("/openapi-dev.json", include_in_schema=False)
-    async def openapi_dev():
-        return app.openapi()
+    # OpenAPI schema for tooling (export-openapi.mjs, docs generation) — debug only
+    if settings.debug:
+
+        @app.get("/openapi-dev.json", include_in_schema=False)
+        async def openapi_dev():
+            return app.openapi()
 
     return app
 

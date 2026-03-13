@@ -26,6 +26,7 @@ autopilot-mkt-backend/
 │   ├── error_handler.py
 │   ├── latency_logging.py
 │   ├── request_size.py
+│   ├── security_headers.py
 ├── src/services/
 │   ├── __init__.py
 │   ├── agent_service.py
@@ -108,8 +109,8 @@ autopilot-mkt-backend/
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
 │   ├── verify_secrets.py
-└── supabase/migrations/  (28 files)
-    └── ...028_add_revoked_invitation_status.sql  ← last applied
+└── supabase/migrations/  (29 files)
+    └── ...029_add_role_to_invitations.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -313,4 +314,5 @@ class {Resource}Response({Resource}Base):
 - `026_company_scoped_discovery_profiles.sql` — Make discovery profiles company-scoped
 - `027_robot_spec_corrections.sql` — 027_robot_spec_corrections.sql
 - `028_add_revoked_invitation_status.sql` — 028 add revoked invitation status
+- `029_add_role_to_invitations.sql` — Add functional role column to invitations table
 <!-- AUTO-MIGRATIONS:END -->

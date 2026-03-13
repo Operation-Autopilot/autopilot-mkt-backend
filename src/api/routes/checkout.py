@@ -227,7 +227,7 @@ async def create_gynger_session(
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
         from src.core.config import get_settings as _gs
-        if _gs().hubspot_access_token and customer_email:
+        if _gs().hubspot_access_token.get_secret_value() and customer_email:
             try:
                 from src.services.hubspot_service import HubSpotService
                 from src.services.checkout_service import _answer_val

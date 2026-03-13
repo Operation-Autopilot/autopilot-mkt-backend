@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -78,11 +78,11 @@ class Settings(BaseSettings):
 
     # Supabase
     supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_secret_key: str = Field(..., description="Supabase secret key for backend operations")
-    supabase_signing_key_jwk: str = Field(..., description="Supabase signing key JWK (JSON string) for JWT token verification")
+    supabase_secret_key: SecretStr = Field(..., min_length=1, description="Supabase secret key for backend operations")
+    supabase_signing_key_jwk: SecretStr = Field(..., min_length=1, description="Supabase signing key JWK (JSON string) for JWT token verification")
 
     # OpenAI
-    openai_api_key: str = Field(..., description="OpenAI API key")
+    openai_api_key: SecretStr = Field(..., min_length=1, description="OpenAI API key")
     openai_model: str = Field(default="gpt-4o", description="OpenAI model to use for main conversations")
     openai_model_fast: str = Field(default="gpt-4o-mini", description="Fast OpenAI model for simple tasks (greetings, etc)")
     openai_model_scoring: str = Field(default="gpt-4o-mini", description="OpenAI model for recommendation scoring")
@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     mock_openai: bool | None = Field(default=None, description="Mock OpenAI responses for local testing (saves tokens). Auto-enabled in development, disabled in production.")
 
     # Pinecone
-    pinecone_api_key: str = Field(..., description="Pinecone API key")
+    pinecone_api_key: SecretStr = Field(..., min_length=1, description="Pinecone API key")
     pinecone_environment: str = Field(..., description="Pinecone environment")
     pinecone_index_name: str = Field(default="autopilot-products", description="Pinecone index name")
     embedding_model: str = Field(default="text-embedding-3-small", description="OpenAI embedding model")
@@ -124,20 +124,20 @@ class Settings(BaseSettings):
     llm_scoring_max_candidates: int = Field(default=8, description="Max robots to send to LLM for scoring (after RAG pre-filter)")
 
     # Stripe
-    stripe_secret_key: str = Field(default="", description="Stripe secret API key (production)")
-    stripe_secret_key_test: str = Field(default="", description="Stripe test secret API key (for test accounts in production)")
-    stripe_webhook_secret: str = Field(default="", description="Stripe webhook signing secret (production)")
-    stripe_webhook_secret_test: str = Field(default="", description="Stripe test webhook signing secret (for test accounts)")
+    stripe_secret_key: SecretStr = Field(default="", description="Stripe secret API key (production)")
+    stripe_secret_key_test: SecretStr = Field(default="", description="Stripe test secret API key (for test accounts in production)")
+    stripe_webhook_secret: SecretStr = Field(default="", description="Stripe webhook signing secret (production)")
+    stripe_webhook_secret_test: SecretStr = Field(default="", description="Stripe test webhook signing secret (for test accounts)")
     stripe_publishable_key: str = Field(default="", description="Stripe publishable key (for frontend)")
 
     # Gynger B2B Financing
-    gynger_api_key: str = Field(default="", description="Gynger vendor API key")
+    gynger_api_key: SecretStr = Field(default="", description="Gynger vendor API key")
     gynger_api_url: str = Field(default="https://api.gynger.io/v1", description="Gynger API base URL")
-    gynger_webhook_secret: str = Field(default="", description="Gynger webhook secret (returned when registering webhook via POST /v1/webhooks)")
+    gynger_webhook_secret: SecretStr = Field(default="", description="Gynger webhook secret (returned when registering webhook via POST /v1/webhooks)")
     gynger_checkout_base_url: str = Field(default="https://app.gynger.io", description="Gynger checkout base URL — application URL constructed as {base}/{session_id}. Sandbox: https://sandbox.app.gynger.io")
 
     # HubSpot CRM
-    hubspot_access_token: str = Field(default="", description="HubSpot Private App token (pat-na2-...)")
+    hubspot_access_token: SecretStr = Field(default="", description="HubSpot Private App token (pat-na2-...)")
     hubspot_pipeline_id: str = Field(default="default", description="HubSpot deal pipeline ID")
     hubspot_deal_stage_lead: str = Field(default="appointmentscheduled", description="HubSpot deal stage on signup (Lead)")
     hubspot_deal_stage_closed_won: str = Field(default="1620590298", description="HubSpot deal stage on payment (Closed Won)")
@@ -151,12 +151,12 @@ class Settings(BaseSettings):
         mode="before",
     )
     @classmethod
-    def strip_whitespace(cls, v: str) -> str:
-        """Strip whitespace/newlines from Stripe keys."""
+    def strip_whitespace(cls, v: str | SecretStr) -> str:
+        """Strip whitespace/newlines from Stripe keys (runs before SecretStr coercion)."""
         return v.strip() if isinstance(v, str) else v
 
     # Email (Resend)
-    resend_api_key: str = Field(default="", description="Resend API key for sending emails")
+    resend_api_key: SecretStr = Field(default="", description="Resend API key for sending emails")
     email_from_address: str = Field(
         default="Autopilot <noreply@operationautopilot.com>",
         description="From address for transactional emails",
@@ -210,7 +210,7 @@ class Settings(BaseSettings):
     @property
     def is_stripe_test_mode(self) -> bool:
         """Check if using Stripe test keys."""
-        return self.stripe_secret_key.startswith("sk_test_")
+        return self.stripe_secret_key.get_secret_value().startswith("sk_test_")
 
 
 @lru_cache

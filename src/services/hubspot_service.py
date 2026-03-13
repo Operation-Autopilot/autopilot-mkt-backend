@@ -28,7 +28,7 @@ class HubSpotService:
 
     def _headers(self) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.settings.hubspot_access_token}",
+            "Authorization": f"Bearer {self.settings.hubspot_access_token.get_secret_value()}",
             "Content-Type": "application/json",
         }
 
