@@ -35,6 +35,7 @@ def _answer_val(answers: dict, key: str) -> str:
 ALLOWED_REDIRECT_DOMAINS = {
     "localhost",
     "tryautopilot.com",
+    "autopilot-marketplace.com",
     "autopilot-marketplace-discovery-to.vercel.app",
 }
 
@@ -423,7 +424,7 @@ class CheckoutService(BaseService):
                     line_items = order.get("line_items") or []
                     robot_name = line_items[0]["product_name"] if line_items else "Robot"
                     total_cents = order.get("total_cents", 0)
-                    pay_type = (order.get("metadata") or {}).get("payment_type", "lease")
+                    pay_type = order.get("payment_type", "lease")
                     if pay_type == "purchase":
                         amount_display = f"${total_cents / 100:,.0f}"
                     else:
@@ -526,7 +527,7 @@ class CheckoutService(BaseService):
                     line_items = order.get("line_items") or []
                     robot_name = line_items[0]["product_name"] if line_items else "Robot"
                     total_cents = order.get("total_cents", 0)
-                    pay_type = (order.get("metadata") or {}).get("payment_type", "lease")
+                    pay_type = order.get("payment_type", "lease")
                     if pay_type == "purchase":
                         amount_display = f"${total_cents / 100:,.0f}"
                     else:

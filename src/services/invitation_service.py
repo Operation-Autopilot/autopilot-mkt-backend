@@ -82,15 +82,15 @@ class InvitationService(BaseService):
             self.client.table("companies")
             .select("name")
             .eq("id", str(company_id))
-            .single()
+            .maybe_single()
         )
-        company_name = company.data.get("name", "a company") if company.data else "a company"
+        company_name = company.data.get("name", "a company") if company and company.data else "a company"
 
         inviter = await self._execute_sync(
             self.client.table("profiles")
             .select("display_name, email")
             .eq("id", str(invited_by))
-            .single()
+            .maybe_single()
         )
         inviter_name = "A team member"
         if inviter.data:

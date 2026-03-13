@@ -1,5 +1,6 @@
 """FastAPI dependency injection functions."""
 
+import logging
 from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
@@ -12,6 +13,8 @@ from src.core.config import get_settings
 from src.core.rate_limiter import get_rate_limiter
 from src.schemas.auth import UserContext
 from src.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 
 def get_session_cookie_config() -> dict:
@@ -266,6 +269,12 @@ async def get_current_user_or_session(
                 )
 
     # No valid auth - create new session
+    if session_token:
+        logger.warning(
+            "DualAuth: token present but invalid — auto-creating new session "
+            "(token prefix: %s...)",
+            session_token[:8] if len(session_token) >= 8 else session_token,
+        )
     session_data, new_token = await session_service.create_session()
     set_session_cookie(response, new_token)
     # Also expose token via response header for when cookies are blocked
