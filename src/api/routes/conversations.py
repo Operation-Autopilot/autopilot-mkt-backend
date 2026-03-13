@@ -44,6 +44,28 @@ async def _get_user_profile_id(user: CurrentUser) -> UUID:
     return UUID(profile["id"])
 
 
+async def _resolve_current_phase(
+    session_id: UUID | None,
+    profile_id: UUID | None,
+) -> ConversationPhase | None:
+    """Get the user's current phase from session or discovery profile.
+
+    The conversations table phase may be stale (never updated after creation).
+    The authoritative phase lives in sessions (anonymous) or discovery_profiles (authenticated).
+    """
+    if session_id:
+        service = SessionService()
+        session = await service.get_session_by_id(session_id)
+        if session and session.get("phase"):
+            return ConversationPhase(session["phase"])
+    if profile_id:
+        dp_service = DiscoveryProfileService()
+        profile = await dp_service.get_by_profile_id(profile_id)
+        if profile and profile.get("phase"):
+            return ConversationPhase(profile["phase"])
+    return None
+
+
 async def _check_conversation_access(
     conversation_id: UUID,
     auth: AuthContext,
@@ -668,6 +690,12 @@ async def send_message(
     profile_id = None
     if auth.is_authenticated and auth.user:
         profile_id = await _get_user_profile_id(auth.user)
+
+    # Resolve actual phase from session/discovery_profile (conversation.phase may be stale)
+    actual_phase = await _resolve_current_phase(session_id, profile_id)
+    if actual_phase and actual_phase != phase:
+        phase = actual_phase
+        await conversation_service.update_phase(conversation_id, phase)
 
     agent_service = AgentService()
     chips: list[str] = []

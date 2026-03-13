@@ -108,8 +108,8 @@ autopilot-mkt-backend/
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
 │   ├── verify_secrets.py
-└── supabase/migrations/  (27 files)
-    └── ...027_robot_spec_corrections.sql  ← last applied
+└── supabase/migrations/  (28 files)
+    └── ...028_add_revoked_invitation_status.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -312,4 +312,5 @@ class {Resource}Response({Resource}Base):
 - `025_mt1_vac_image_updates.sql` — MT1 Vac image corrections
 - `026_company_scoped_discovery_profiles.sql` — Make discovery profiles company-scoped
 - `027_robot_spec_corrections.sql` — 027_robot_spec_corrections.sql
+- `028_add_revoked_invitation_status.sql` — 028 add revoked invitation status
 <!-- AUTO-MIGRATIONS:END -->

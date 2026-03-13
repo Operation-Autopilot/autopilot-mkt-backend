@@ -158,6 +158,10 @@ class SessionConflictSummary(BaseModel):
     message_count: int = Field(default=0, description="Number of conversation messages")
     answer_count: int = Field(default=0, description="Number of discovery answers")
     phase: str = Field(default="discovery", description="Current phase")
+    robot_selected: bool = Field(default=False, description="Whether a robot has been selected")
+    team_member_count: int = Field(default=0, description="Number of team members with email")
+    has_target_date: bool = Field(default=False, description="Whether a target start date is set")
+    richness_score: int = Field(default=0, description="Computed score indicating data richness")
 
 
 class SessionConflictResponse(BaseModel):

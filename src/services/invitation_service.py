@@ -43,6 +43,20 @@ class InvitationService(BaseService):
         Returns:
             dict: The created invitation data.
         """
+        # Check for existing pending invitation
+        existing = await self._execute_sync(
+            self.client.table("invitations")
+            .select("id")
+            .eq("company_id", str(company_id))
+            .eq("email", data.email)
+            .eq("status", InvitationStatus.PENDING.value)
+        )
+
+        if existing.data:
+            raise ValidationError(
+                f"{data.email} already has a pending invitation"
+            )
+
         # Calculate expiration (7 days from now)
         expires_at = datetime.now(timezone.utc) + timedelta(days=self.DEFAULT_EXPIRATION_DAYS)
 
@@ -288,6 +302,47 @@ class InvitationService(BaseService):
         response = await self._execute_sync(
             self.client.table("invitations")
             .update({"status": InvitationStatus.DECLINED.value})
+            .eq("id", str(invitation_id))
+        )
+
+        if not response.data:
+            raise ValueError("Database operation returned no data")
+        return response.data[0]
+
+    async def revoke_invitation(
+        self,
+        invitation_id: UUID,
+        company_id: UUID,
+        profile_id: UUID,
+    ) -> dict[str, Any]:
+        """Revoke a pending invitation (owner action).
+
+        Args:
+            invitation_id: The invitation's UUID.
+            company_id: The company's UUID (for ownership verification).
+            profile_id: The profile ID of the revoking user.
+
+        Returns:
+            dict: The updated invitation data.
+
+        Raises:
+            NotFoundError: If invitation not found or belongs to a different company.
+            ValidationError: If invitation is not pending.
+        """
+        invitation = await self.get_invitation(invitation_id)
+
+        if not invitation:
+            raise NotFoundError("Invitation not found")
+
+        if invitation["company_id"] != str(company_id):
+            raise NotFoundError("Invitation not found")
+
+        if invitation["status"] != InvitationStatus.PENDING.value:
+            raise ValidationError(f"Invitation has already been {invitation['status']}")
+
+        response = await self._execute_sync(
+            self.client.table("invitations")
+            .update({"status": InvitationStatus.REVOKED.value})
             .eq("id", str(invitation_id))
         )
 

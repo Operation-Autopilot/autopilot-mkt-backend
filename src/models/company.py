@@ -13,6 +13,7 @@ class InvitationStatus(str, Enum):
     ACCEPTED = "accepted"
     DECLINED = "declined"
     EXPIRED = "expired"
+    REVOKED = "revoked"
 
 
 class Company(TypedDict):

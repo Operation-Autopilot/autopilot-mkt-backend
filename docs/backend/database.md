@@ -106,54 +106,74 @@ Anonymous sessions for unauthenticated users.
 
 ### discovery_profiles
 
-Structured profiles extracted from discovery conversations by AI.
+Structured profiles storing discovery progress for authenticated users. Company-scoped since migration 026 — members of the same company share a single discovery profile.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `uuid` | Primary key |
-| `conversation_id` | `uuid` | FK to `conversations` |
 | `profile_id` | `uuid` | FK to `profiles` |
-| `industry` | `text` | Extracted industry |
-| `facility_size` | `text` | Facility dimensions/category |
-| `use_cases` | `jsonb` | Array of identified use cases |
-| `budget_range` | `jsonb` | Min/max budget |
-| `requirements` | `jsonb` | Structured requirements object |
+| `company_id` | `uuid` | FK to `companies` (nullable — shared across company members, added in 026) |
+| `current_question_index` | `integer` | Current question index in discovery flow |
+| `phase` | `text` | Current phase: `discovery`, `roi`, or `greenlight` |
+| `answers` | `jsonb` | Discovery answers keyed by question key |
+| `roi_inputs` | `jsonb` | ROI calculation inputs (monthly_spend, sqft, hours, frequency) |
+| `selected_product_ids` | `uuid[]` | Selected robot IDs from recommendations |
+| `timeframe` | `text` | ROI display timeframe (`monthly` or `yearly`) |
+| `greenlight` | `jsonb` | Greenlight phase data (team members, target date) |
+| `answers_hash` | `text` | Hash of answers for recommendation cache invalidation (added in 009) |
+| `cached_recommendations` | `jsonb` | Cached recommendation results (added in 009) |
 | `created_at` | `timestamptz` | Row creation timestamp |
 | `updated_at` | `timestamptz` | Last update timestamp |
 
-### robots
+### robot_catalog
 
-The robot product catalog.
+The robot product catalog (table name is `robot_catalog`, not `robots`). Seeded with 22 robots in migration 006; 13 active, 9 inactive (set in 021).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `uuid` | Primary key |
-| `name` | `text` | Robot name |
+| `sku` | `text` | Unique SKU identifier (e.g., `cc1_pro`, `t7amr`) |
+| `name` | `text` | Robot display name |
 | `manufacturer` | `text` | Manufacturer name |
-| `category` | `text` | Robot category |
-| `description` | `text` | Product description |
-| `specs` | `jsonb` | Technical specifications |
-| `price_usd` | `numeric` | List price |
+| `monthly_lease` | `numeric` | Monthly lease price (USD) |
+| `purchase_price` | `numeric` | One-time purchase price (USD) |
+| `active` | `boolean` | Whether robot is shown in marketplace |
 | `stripe_product_id` | `text` | Production Stripe product ID |
-| `stripe_price_id` | `text` | Production Stripe price ID |
+| `stripe_lease_price_id` | `text` | Production Stripe lease price ID |
 | `stripe_product_id_test` | `text` | Test Stripe product ID |
-| `stripe_price_id_test` | `text` | Test Stripe price ID |
-| `image_url` | `text` | Product image URL |
+| `stripe_lease_price_id_test` | `text` | Test Stripe lease price ID |
+| `image_url` | `text` | Product image URL (Supabase Storage) |
+| `specs` | `jsonb` | Technical specifications |
+| `created_at` | `timestamptz` | Row creation timestamp |
+
+### floor_plan_analyses
+
+Floor plan uploads with GPT-4o Vision analysis results (added in migration 012).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `uuid` | Primary key |
+| `profile_id` | `uuid` | FK to `profiles` |
+| `file_path` | `text` | Storage path in Supabase |
+| `analysis_result` | `jsonb` | GPT-4o Vision analysis output (sqft, layout, surface types) |
 | `created_at` | `timestamptz` | Row creation timestamp |
 
 ### orders
 
-Records of completed purchases.
+Records of purchases and financing applications.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | `uuid` | Primary key |
 | `profile_id` | `uuid` | FK to `profiles` |
-| `robot_id` | `uuid` | FK to `robots` |
-| `stripe_session_id` | `text` | Stripe checkout session ID |
-| `status` | `text` | Order status |
-| `amount` | `numeric` | Order total |
-| `metadata` | `jsonb` | Order metadata |
+| `session_id` | `uuid` | FK to `sessions` |
+| `stripe_checkout_session_id` | `text` | Stripe checkout session ID (nullable for Gynger) |
+| `gynger_application_id` | `text` | Gynger financing application ID (added in 014) |
+| `payment_provider` | `text` | `stripe` or `gynger` (added in 014) |
+| `status` | `order_status` | Enum: `pending`, `payment_pending`, `completed`, `cancelled`, `refunded` |
+| `total_cents` | `integer` | Order total in cents |
+| `line_items` | `jsonb` | Order line items (robot details, quantities) |
+| `metadata` | `jsonb` | Order metadata (is_test_mode, etc.) |
 | `created_at` | `timestamptz` | Row creation timestamp |
 
 ## JSONB Usage
@@ -193,6 +213,20 @@ Migrations are managed in `supabase/migrations/` and applied via the Supabase CL
 | `012_create_floor_plan_analysis` | `floor_plan_analyses` table with GPT-4o Vision results |
 | `013_add_payment_pending_status` | Add `payment_pending` to `order_status` enum (ACH / delayed payments) |
 | `014_add_gynger_to_orders` | `gynger_application_id` + `payment_provider` columns on orders |
+| `015_add_purchase_price_ids` | Stripe purchase price IDs for one-time purchase mode |
+| `016_enable_sessions_rls` | Enable RLS policies on sessions table |
+| `017_pickleball_messaging` | Pickleball robot messaging updates (CC1 Pro/C40/C30 court types) |
+| `018_data_corrections` | Spec corrections: Neo 2W nav, T380AMR runtime, Scrubber 50/75/Omnie/Vacuum 40 |
+| `019_add_purchase_price_ids` | *(duplicate of 015 — safe no-op)* |
+| `020_enable_sessions_rls` | *(duplicate of 016 — safe no-op)* |
+| `021_set_inactive_robots` | Mark 9 robots inactive (Beetle, Omnie, Scrubber 50/75, T16AMR, C20, C55, Marvel, Mira) |
+| `022_robot_image_updates` | Update robot images to OEM photos in Supabase Storage |
+| `023_add_test_robot` | Seed Penny test robot for E2E testing |
+| `024_court_type_surfaces` | Add CushionX, Acrylic, Concrete court surface types for pickleball robots |
+| `025_mt1_vac_image_updates` | Update MT1 Vac images |
+| `026_company_scoped_discovery_profiles` | Add `company_id` to `discovery_profiles` for shared company discovery data |
+
+> **Note:** Migrations 019 and 020 are accidental duplicates of 015 and 016 respectively. They are idempotent no-ops.
 
 > See [Database Migrations](../status/migrations.md) for the auto-generated version of this table.
 

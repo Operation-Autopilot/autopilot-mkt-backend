@@ -21,19 +21,23 @@ The frontend uses **Vitest** as the test runner (configured with the `jsdom` env
 
 ## Frontend: Playwright E2E
 
-A full Playwright E2E test suite covers all customer journey archetypes, payment flows, nonlinear sessions, and multi-user scenarios. Tests run against the local dev server (`http://localhost:3000`) with API mocked via `page.route()`.
+A full Playwright E2E test suite with **97 test files** across 7 categories covers all customer journey archetypes, payment flows, nonlinear sessions, multi-user scenarios, and backend/frontend contract validation. Tests run against the local dev server (`http://localhost:3000`) with API mocked via `page.route()`.
 
-**Suite structure** (`e2e/` directory):
+**Suite structure** (`e2e/` directory — 97 files total):
 
-| Folder | Coverage |
-|--------|----------|
-| `journeys/` | J-01–J-10: 5 success + 5 failure journey archetypes |
-| `nonlinear/` | NL-01–NL-05: session persistence, mid-flow edits, notifications |
-| `payment/` | PM-01–PM-03: Stripe card, Gynger financing, RaaS/lease |
-| `procurement/` | PM-04–PM-05: quote request, demo booking (fixme — not yet implemented) |
-| `multiuser/` | MU-01–MU-03: concurrent sessions, share links (fixme — not yet implemented) |
-| `fixtures/` | `sku_data.ts`, `deal_profiles.ts`, `test_users.ts`, `notifications.ts` |
-| `helpers/` | `marketplace.ts`, `roi_calculator.ts`, `auth.ts`, `payment.ts`, `email.ts`, `supabase.ts` |
+| Folder | Files | Coverage |
+|--------|-------|----------|
+| `integration/` | 53 | Backend/frontend contract tests — auth, API, checkout, ROI, payment flows |
+| `journeys/` | 10 | J-01–J-10: 5 success + 5 failure journey archetypes |
+| `nonlinear/` | 5 | NL-01–NL-05: session persistence, mid-flow edits, notifications |
+| `payment/` | 3 | PM-01–PM-03: Stripe card, Gynger financing, RaaS/lease |
+| `procurement/` | 2 | PM-04–PM-05: quote request, demo booking (fixme — not yet implemented) |
+| `multiuser/` | 3 | MU-01–MU-03: concurrent sessions, share links (fixme — not yet implemented) |
+| *(root)* | 21 | Sanity tests: auth-flow, chat, discovery, greenlight, ROI, mobile, iPad |
+| `fixtures/` | — | `sku_data.ts`, `deal_profiles.ts`, `test_users.ts`, `notifications.ts`, `backend-mock.ts` |
+| `helpers/` | — | `marketplace.ts`, `roi_calculator.ts`, `auth.ts`, `payment.ts`, `email.ts`, `supabase.ts` |
+
+See also: [End-User Scripts](./end-user-scripts.md) (62 manual test cases) and [Priority Matrix](./priority-matrix.md) (scoring and tiering).
 
 Tests for unimplemented features use `test.fixme(true, 'reason')` so they're tracked without failing CI.
 

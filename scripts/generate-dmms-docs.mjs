@@ -162,7 +162,7 @@ const FEATURE_PRESENCE_MAP = [
   {
     name: 'Floor Plan Upload UI',
     project: 'Frontend',
-    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/components/FloorPlanUpload.tsx'],
+    files: ['../Autopilot-Marketplace-Discovery-to-Greenlight-/src/components/discovery/FloorPlanUploader.tsx'],
     priority: 2,
     description: 'Drag-and-drop floor plan upload with auto-fill sqft from vision analysis',
   },

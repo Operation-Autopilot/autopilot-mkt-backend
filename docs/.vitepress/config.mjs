@@ -120,6 +120,8 @@ export default defineConfig({
             { text: 'Roadmap', link: '/status/roadmap' },
             { text: 'Context Map', link: '/status/context-map' },
             { text: 'Bug Audit (Mar 2026)', link: '/status/bug-audit' },
+            { text: 'Migrations', link: '/status/migrations' },
+            { text: 'Services', link: '/status/services' },
           ],
         },
       ],
