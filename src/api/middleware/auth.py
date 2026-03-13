@@ -48,7 +48,7 @@ def get_signing_key() -> Any:
         Public key for JWT verification.
     """
     settings = get_settings()
-    jwk_json = settings.supabase_signing_key_jwk
+    jwk_json = settings.supabase_signing_key_jwk.get_secret_value()
 
     if not jwk_json:
         raise AuthError(
@@ -93,12 +93,13 @@ def decode_jwt(token: str) -> TokenPayload:
             token,
             public_key,
             algorithms=["ES256"],
+            audience="authenticated",
             options={
                 "verify_signature": True,
                 "verify_exp": True,
                 "verify_iat": True,
-                "verify_aud": False,  # Don't verify audience - Supabase tokens have varying audiences
-                "require": ["exp", "iat", "sub"],
+                "verify_aud": True,
+                "require": ["exp", "iat", "sub", "aud"],
             },
         )
 
@@ -112,6 +113,12 @@ def decode_jwt(token: str) -> TokenPayload:
             aud=payload.get("aud"),
             iss=payload.get("iss"),
         )
+
+    except jwt.InvalidAudienceError as e:
+        raise AuthError(
+            "Invalid token audience",
+            AuthErrorCode.INVALID_TOKEN,
+        ) from e
 
     except jwt.ExpiredSignatureError as e:
         raise AuthError(

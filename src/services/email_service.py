@@ -18,7 +18,7 @@ class EmailService:
     def __init__(self) -> None:
         """Initialize email service with Resend API key."""
         settings = get_settings()
-        resend.api_key = settings.resend_api_key
+        resend.api_key = settings.resend_api_key.get_secret_value()
         self.from_email = settings.email_from_address
         self.frontend_url = settings.frontend_url
 

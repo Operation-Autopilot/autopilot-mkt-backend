@@ -28,7 +28,7 @@ def get_supabase_client() -> Client:
     settings = get_settings()
     return create_client(
         settings.supabase_url,
-        settings.supabase_secret_key,
+        settings.supabase_secret_key.get_secret_value(),
     )
 
 
@@ -52,7 +52,7 @@ def create_auth_client() -> Client:
     )
     return create_client(
         settings.supabase_url,
-        settings.supabase_secret_key,
+        settings.supabase_secret_key.get_secret_value(),
         options=options,
     )
 

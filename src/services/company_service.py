@@ -106,18 +106,19 @@ class CompanyService(BaseService):
     async def get_user_company(self, profile_id: UUID) -> dict[str, Any] | None:
         """Get the company a user belongs to.
 
-        Returns the first company the user is a member of.
+        Returns the first company the user is a member of, including the user's
+        role in that company as ``my_role``.
 
         Args:
             profile_id: The user's profile UUID.
 
         Returns:
-            dict | None: The company data or None if user has no company.
+            dict | None: The company data (with ``my_role``) or None if user has no company.
         """
-        # Get user's company membership
+        # Get user's company membership including their role
         membership_response = await self._execute_sync(
             self.client.table("company_members")
-            .select("company_id")
+            .select("company_id, role")
             .eq("profile_id", str(profile_id))
             .limit(1)
         )
@@ -126,9 +127,14 @@ class CompanyService(BaseService):
             return None
 
         company_id = membership_response.data[0]["company_id"]
+        member_role = membership_response.data[0].get("role")
 
-        # Get company details
-        return await self.get_company(UUID(company_id))
+        # Get company details and attach the user's role
+        company = await self.get_company(UUID(company_id))
+        if company:
+            company["my_role"] = member_role
+
+        return company
 
     async def is_member(self, company_id: UUID, profile_id: UUID) -> bool:
         """Check if a profile is a member of a company.

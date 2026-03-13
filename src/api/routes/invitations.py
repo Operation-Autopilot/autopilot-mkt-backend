@@ -1,15 +1,64 @@
 """Invitation API routes for accepting/declining invitations."""
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
 from src.api.deps import CurrentUser
-from src.schemas.company import InvitationResponse, InvitationWithCompany
+from src.schemas.company import InvitationResponse, InvitationStatusCheck, InvitationWithCompany
 from src.services.invitation_service import InvitationService
 from src.services.profile_service import ProfileService
 
 router = APIRouter(prefix="/invitations", tags=["invitations"])
+
+
+@router.get(
+    "/{invitation_id}/status",
+    response_model=InvitationStatusCheck,
+    summary="Check invitation status (public)",
+    description="Returns invitation status without requiring authentication. No PII is exposed.",
+)
+async def check_invitation_status(invitation_id: UUID) -> InvitationStatusCheck:
+    """Check the status of an invitation (public, no auth required).
+
+    Args:
+        invitation_id: The invitation's UUID.
+
+    Returns:
+        InvitationStatusCheck: Status, company name, and expiration flag.
+
+    Raises:
+        HTTPException: 404 if invitation not found.
+    """
+    service = InvitationService()
+    invitation = await service.get_invitation(invitation_id)
+
+    if not invitation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invitation not found",
+        )
+
+    company_data = invitation.get("companies", {})
+    company_name = company_data.get("name", "Unknown") if company_data else "Unknown"
+
+    expired = False
+    expires_at = invitation.get("expires_at")
+    if expires_at:
+        if isinstance(expires_at, str):
+            exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        else:
+            exp_dt = expires_at
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        expired = datetime.now(timezone.utc) > exp_dt
+
+    return InvitationStatusCheck(
+        status=invitation["status"],
+        company_name=company_name,
+        expired=expired,
+    )
 
 
 async def _get_user_profile_id(user: CurrentUser) -> UUID:

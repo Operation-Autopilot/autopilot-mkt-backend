@@ -16,7 +16,7 @@ def get_pinecone_client() -> Pinecone:
         Pinecone: Pinecone client instance.
     """
     settings = get_settings()
-    return Pinecone(api_key=settings.pinecone_api_key)
+    return Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
 
 
 def get_pinecone_index():

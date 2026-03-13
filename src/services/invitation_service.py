@@ -64,6 +64,7 @@ class InvitationService(BaseService):
             "company_id": str(company_id),
             "email": data.email,
             "invited_by": str(invited_by),
+            "role": data.role,
             "status": InvitationStatus.PENDING.value,
             "expires_at": expires_at.isoformat(),
         }
@@ -116,7 +117,7 @@ class InvitationService(BaseService):
             raise ValueError(f"Failed to deliver invitation email: {error_detail}")
 
         # Fire HubSpot contact creation for the invitee (fire-and-forget)
-        if get_settings().hubspot_access_token:
+        if get_settings().hubspot_access_token.get_secret_value():
             from src.services.hubspot_service import HubSpotService
             asyncio.create_task(
                 HubSpotService().on_team_invite(
@@ -249,11 +250,11 @@ class InvitationService(BaseService):
         if existing_member.data:
             raise ValidationError("You are already a member of this company")
 
-        # Add user as member
+        # Add user as member with the functional role from the invitation
         member_data = {
             "company_id": str(company_id),
             "profile_id": str(profile_id),
-            "role": "member",
+            "role": invitation.get("role", "Other"),
         }
         await self._execute_sync(
             self.client.table("company_members").insert(member_data)

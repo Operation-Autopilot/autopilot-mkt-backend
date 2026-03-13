@@ -26,6 +26,7 @@ class CompanyResponse(BaseModel):
     owner_id: UUID = Field(description="Profile ID of company owner")
     created_at: datetime = Field(description="Company creation timestamp")
     updated_at: datetime = Field(description="Last update timestamp")
+    my_role: str | None = Field(default=None, description="Current user's role in this company (only set on /me)")
 
 
 class MemberProfile(BaseModel):
@@ -59,6 +60,7 @@ class InvitationCreate(BaseModel):
 
     email: EmailStr = Field(..., description="Email address to invite")
     name: str | None = Field(default=None, description="Invitee's name (prepopulates signup form)", max_length=255)
+    role: str = Field(default="Other", max_length=50, description="Functional role (e.g. Finance, Facilities, VP Ops)")
 
 
 class InvitationResponse(BaseModel):
@@ -71,6 +73,7 @@ class InvitationResponse(BaseModel):
     email: str = Field(description="Invited email address")
     invited_by: UUID = Field(description="Profile ID of inviter")
     status: InvitationStatus = Field(description="Current invitation status")
+    role: str = Field(default="Other", description="Functional role assigned to invitee")
     expires_at: datetime = Field(description="Invitation expiration timestamp")
     created_at: datetime = Field(description="Invitation creation timestamp")
     accepted_at: datetime | None = Field(default=None, description="When invitation was accepted")
@@ -80,3 +83,13 @@ class InvitationWithCompany(InvitationResponse):
     """Invitation response with company details."""
 
     company_name: str = Field(description="Name of the company")
+
+
+class InvitationStatusCheck(BaseModel):
+    """Public-facing invitation status check (no PII)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    status: InvitationStatus = Field(description="Current invitation status")
+    company_name: str = Field(description="Name of the company")
+    expired: bool = Field(description="True if past expires_at, even if DB status is still pending")
