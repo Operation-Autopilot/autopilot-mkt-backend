@@ -137,3 +137,36 @@ class SessionClaimResponse(BaseModel):
     discovery_profile_id: UUID = Field(description="Created discovery profile ID")
     conversation_transferred: bool = Field(default=False, description="Whether a conversation was transferred")
     orders_transferred: int = Field(default=0, description="Number of orders transferred to the user's profile")
+
+
+# Merge strategy for session claiming
+MergeStrategy = Literal["keep_account", "keep_session"]
+
+
+class SessionClaimRequest(BaseModel):
+    """Optional body for POST /sessions/claim to specify merge strategy."""
+
+    merge_strategy: MergeStrategy = Field(
+        default="keep_account",
+        description="How to resolve conflicts: keep_account preserves existing profile data, keep_session overwrites with anonymous session data",
+    )
+
+
+class SessionConflictSummary(BaseModel):
+    """Summary of data in a session or account for conflict comparison."""
+
+    message_count: int = Field(default=0, description="Number of conversation messages")
+    answer_count: int = Field(default=0, description="Number of discovery answers")
+    phase: str = Field(default="discovery", description="Current phase")
+    robot_selected: bool = Field(default=False, description="Whether a robot has been selected")
+    team_member_count: int = Field(default=0, description="Number of team members with email")
+    has_target_date: bool = Field(default=False, description="Whether a target start date is set")
+    richness_score: int = Field(default=0, description="Computed score indicating data richness")
+
+
+class SessionConflictResponse(BaseModel):
+    """Response for GET /sessions/conflict-check."""
+
+    has_conflict: bool = Field(description="Whether both anonymous session and account have meaningful data")
+    anonymous: SessionConflictSummary = Field(description="Anonymous session data summary")
+    account: SessionConflictSummary = Field(description="Account data summary")

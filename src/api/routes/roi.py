@@ -214,15 +214,18 @@ async def get_recommendations_from_discovery(
     profile = await profile_service.get_or_create_profile(user.user_id, user.email)
     profile_id = UUID(profile["id"])
 
-    # Get discovery profile
+    # Get discovery profile (company-scoped when applicable)
     discovery_service = DiscoveryProfileService()
-    discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+    discovery_profile = await discovery_service.get_for_user(profile_id)
 
     if not discovery_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Discovery profile not found",
         )
+
+    # Extract company_id for cache operations
+    dp_company_id = UUID(discovery_profile["company_id"]) if discovery_profile.get("company_id") else None
 
     answers = discovery_profile.get("answers", {})
     if not answers:
@@ -232,7 +235,9 @@ async def get_recommendations_from_discovery(
         )
 
     # Check for cached recommendations first
-    cached = await discovery_service.get_cached_recommendations(profile_id, answers)
+    cached = await discovery_service.get_cached_recommendations(
+        profile_id, answers, company_id=dp_company_id
+    )
     if cached:
         logger.info("Returning cached recommendations for user %s", user.user_id)
         # Convert cached dict back to RecommendationsResponse
@@ -266,6 +271,7 @@ async def get_recommendations_from_discovery(
                 profile_id,
                 answers,
                 result.model_dump(mode="json"),
+                company_id=dp_company_id,
             )
         except Exception as cache_error:
             logger.warning("Failed to cache recommendations: %s", cache_error)

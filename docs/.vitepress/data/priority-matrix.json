@@ -1,0 +1,490 @@
+{
+  "generatedAt": "2026-03-13T09:33:43.993Z",
+  "totalTCs": 62,
+  "smokeTCs": 3,
+  "regressionTCs": 20,
+  "totalBugsCovered": 51,
+  "scores": [
+    {
+      "tc": 46,
+      "score": 82,
+      "tier": "Smoke",
+      "bugs": [
+        "A-01",
+        "C-07",
+        "C-08",
+        "C-14",
+        "E-10"
+      ]
+    },
+    {
+      "tc": 37,
+      "score": 80,
+      "tier": "Smoke",
+      "bugs": [
+        "A-02",
+        "A-03",
+        "D-01",
+        "D-07"
+      ]
+    },
+    {
+      "tc": 28,
+      "score": 72,
+      "tier": "Smoke",
+      "bugs": [
+        "B-01",
+        "B-02",
+        "B-03",
+        "B-07",
+        "B-08",
+        "F-02",
+        "F-03"
+      ]
+    },
+    {
+      "tc": 44,
+      "score": 69,
+      "tier": "Regression",
+      "bugs": [
+        "C-12",
+        "C-14"
+      ]
+    },
+    {
+      "tc": 36,
+      "score": 66,
+      "tier": "Regression",
+      "bugs": [
+        "D-02"
+      ]
+    },
+    {
+      "tc": 38,
+      "score": 65,
+      "tier": "Regression",
+      "bugs": [
+        "A-02",
+        "D-01"
+      ]
+    },
+    {
+      "tc": 6,
+      "score": 63,
+      "tier": "Regression",
+      "bugs": [
+        "E-03",
+        "E-06",
+        "E-09",
+        "G-04"
+      ]
+    },
+    {
+      "tc": 43,
+      "score": 62,
+      "tier": "Regression",
+      "bugs": [
+        "C-05"
+      ]
+    },
+    {
+      "tc": 47,
+      "score": 62,
+      "tier": "Regression",
+      "bugs": [
+        "C-04"
+      ]
+    },
+    {
+      "tc": 48,
+      "score": 61,
+      "tier": "Regression",
+      "bugs": [
+        "C-02",
+        "C-03",
+        "C-09",
+        "C-10",
+        "C-13"
+      ]
+    },
+    {
+      "tc": 39,
+      "score": 60,
+      "tier": "Regression",
+      "bugs": [
+        "D-06"
+      ]
+    },
+    {
+      "tc": 11,
+      "score": 59,
+      "tier": "Regression",
+      "bugs": [
+        "E-01"
+      ]
+    },
+    {
+      "tc": 50,
+      "score": 57,
+      "tier": "Regression",
+      "bugs": [
+        "B-04",
+        "B-10",
+        "F-02",
+        "F-05"
+      ]
+    },
+    {
+      "tc": 61,
+      "score": 56,
+      "tier": "Regression",
+      "bugs": [
+        "A-05"
+      ]
+    },
+    {
+      "tc": 35,
+      "score": 55,
+      "tier": "Regression",
+      "bugs": [
+        "D-03"
+      ]
+    },
+    {
+      "tc": 29,
+      "score": 52,
+      "tier": "Regression",
+      "bugs": [
+        "B-08",
+        "F-03"
+      ]
+    },
+    {
+      "tc": 49,
+      "score": 52,
+      "tier": "Regression",
+      "bugs": [
+        "C-01",
+        "C-13",
+        "G-01"
+      ]
+    },
+    {
+      "tc": 2,
+      "score": 49,
+      "tier": "Regression",
+      "bugs": [
+        "E-07"
+      ]
+    },
+    {
+      "tc": 13,
+      "score": 48,
+      "tier": "Regression",
+      "bugs": [
+        "B-01",
+        "B-02"
+      ]
+    },
+    {
+      "tc": 1,
+      "score": 45,
+      "tier": "Regression",
+      "bugs": []
+    },
+    {
+      "tc": 7,
+      "score": 42,
+      "tier": "Full",
+      "bugs": [
+        "E-03",
+        "E-06"
+      ]
+    },
+    {
+      "tc": 17,
+      "score": 42,
+      "tier": "Full",
+      "bugs": [
+        "E-02",
+        "E-04",
+        "E-05"
+      ]
+    },
+    {
+      "tc": 51,
+      "score": 41,
+      "tier": "Full",
+      "bugs": [
+        "B-10"
+      ]
+    },
+    {
+      "tc": 14,
+      "score": 40,
+      "tier": "Full",
+      "bugs": [
+        "B-03"
+      ]
+    },
+    {
+      "tc": 22,
+      "score": 40,
+      "tier": "Full",
+      "bugs": [
+        "F-06"
+      ]
+    },
+    {
+      "tc": 3,
+      "score": 39,
+      "tier": "Full",
+      "bugs": [
+        "F-07"
+      ]
+    },
+    {
+      "tc": 12,
+      "score": 37,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 30,
+      "score": 37,
+      "tier": "Full",
+      "bugs": [
+        "F-01"
+      ]
+    },
+    {
+      "tc": 19,
+      "score": 36,
+      "tier": "Full",
+      "bugs": [
+        "B-04"
+      ]
+    },
+    {
+      "tc": 41,
+      "score": 36,
+      "tier": "Full",
+      "bugs": [
+        "D-04",
+        "D-05"
+      ]
+    },
+    {
+      "tc": 55,
+      "score": 36,
+      "tier": "Full",
+      "bugs": [
+        "F-08"
+      ]
+    },
+    {
+      "tc": 8,
+      "score": 35,
+      "tier": "Full",
+      "bugs": [
+        "E-06"
+      ]
+    },
+    {
+      "tc": 31,
+      "score": 35,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 54,
+      "score": 35,
+      "tier": "Full",
+      "bugs": [
+        "F-07"
+      ]
+    },
+    {
+      "tc": 18,
+      "score": 31,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 25,
+      "score": 31,
+      "tier": "Full",
+      "bugs": [
+        "F-06"
+      ]
+    },
+    {
+      "tc": 56,
+      "score": 31,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 26,
+      "score": 29,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 32,
+      "score": 29,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 40,
+      "score": 29,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 45,
+      "score": 29,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 16,
+      "score": 26,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 58,
+      "score": 26,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 33,
+      "score": 24,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 34,
+      "score": 23,
+      "tier": "Full",
+      "bugs": [
+        "G-02"
+      ]
+    },
+    {
+      "tc": 9,
+      "score": 22,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 10,
+      "score": 22,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 24,
+      "score": 22,
+      "tier": "Full",
+      "bugs": [
+        "F-05"
+      ]
+    },
+    {
+      "tc": 4,
+      "score": 21,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 5,
+      "score": 21,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 15,
+      "score": 20,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 52,
+      "score": 20,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 53,
+      "score": 20,
+      "tier": "Full",
+      "bugs": [
+        "G-01"
+      ]
+    },
+    {
+      "tc": 57,
+      "score": 20,
+      "tier": "Full",
+      "bugs": [
+        "G-03"
+      ]
+    },
+    {
+      "tc": 59,
+      "score": 20,
+      "tier": "Full",
+      "bugs": [
+        "E-11"
+      ]
+    },
+    {
+      "tc": 60,
+      "score": 18,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 62,
+      "score": 18,
+      "tier": "Full",
+      "bugs": [
+        "E-05"
+      ]
+    },
+    {
+      "tc": 20,
+      "score": 17,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 23,
+      "score": 16,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 42,
+      "score": 13,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 21,
+      "score": 11,
+      "tier": "Full",
+      "bugs": []
+    },
+    {
+      "tc": 27,
+      "score": 10,
+      "tier": "Full",
+      "bugs": []
+    }
+  ]
+}

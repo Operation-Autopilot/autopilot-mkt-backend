@@ -21,6 +21,7 @@ from src.schemas.message import (
     MessageWithAgentResponse,
     TeamMemberExtracted,
 )
+from src.schemas.discovery import DiscoveryProfileUpdate
 from src.services.extraction_constants import REQUIRED_QUESTION_KEYS
 from src.services.agent_service import AgentService
 from src.services.company_service import CompanyService
@@ -41,6 +42,28 @@ async def _get_user_profile_id(user: CurrentUser) -> UUID:
     service = ProfileService()
     profile = await service.get_or_create_profile(user.user_id, user.email)
     return UUID(profile["id"])
+
+
+async def _resolve_current_phase(
+    session_id: UUID | None,
+    profile_id: UUID | None,
+) -> ConversationPhase | None:
+    """Get the user's current phase from session or discovery profile.
+
+    The conversations table phase may be stale (never updated after creation).
+    The authoritative phase lives in sessions (anonymous) or discovery_profiles (authenticated).
+    """
+    if session_id:
+        service = SessionService()
+        session = await service.get_session_by_id(session_id)
+        if session and session.get("phase"):
+            return ConversationPhase(session["phase"])
+    if profile_id:
+        dp_service = DiscoveryProfileService()
+        profile = await dp_service.get_by_profile_id(profile_id)
+        if profile and profile.get("phase"):
+            return ConversationPhase(profile["phase"])
+    return None
 
 
 async def _check_conversation_access(
@@ -190,8 +213,8 @@ async def reset_conversation(
         )
         profile_id = UUID(profile["id"])
 
-        # Get discovery profile for context
-        discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+        # Get discovery profile for context (company-scoped when applicable)
+        discovery_profile = await discovery_service.get_for_user(profile_id)
         if discovery_profile:
             answers = discovery_profile.get("answers", {})
             if answers:
@@ -336,8 +359,8 @@ async def get_current_conversation(
         )
         profile_id = UUID(profile["id"])
 
-        # Get discovery profile for context
-        discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+        # Get discovery profile for context (company-scoped when applicable)
+        discovery_profile = await discovery_service.get_for_user(profile_id)
         logger.info(
             "Current conversation: profile_id=%s, discovery_profile_found=%s",
             profile_id,
@@ -668,6 +691,12 @@ async def send_message(
     if auth.is_authenticated and auth.user:
         profile_id = await _get_user_profile_id(auth.user)
 
+    # Resolve actual phase from session/discovery_profile (conversation.phase may be stale)
+    actual_phase = await _resolve_current_phase(session_id, profile_id)
+    if actual_phase and actual_phase != phase:
+        phase = actual_phase
+        await conversation_service.update_phase(conversation_id, phase)
+
     agent_service = AgentService()
     chips: list[str] = []
     discovery_state: DiscoveryState | None = None
@@ -705,12 +734,28 @@ async def send_message(
             metadata=data.metadata,
         )
 
+    # Generate contextual chips for greenlight phase
+    if phase == ConversationPhase.GREENLIGHT and session_id:
+        try:
+            gl_session_service = SessionService()
+            gl_session_data = await gl_session_service.get_session_by_id(session_id)
+            gl_data = (gl_session_data or {}).get("greenlight", {}) or {}
+            if not gl_data.get("targetStartDate"):
+                chips.append("Set Target Date")
+            if not gl_data.get("teamMembers"):
+                chips.append("Invite Team Members")
+            if gl_data.get("targetStartDate") and gl_data.get("teamMembers"):
+                chips.append("Proceed to Checkout")
+        except Exception as e:
+            logger.warning("Failed to generate greenlight chips: %s", e)
+
     # Run profile extraction inline so the frontend's session query refetch
     # gets the updated answers immediately. Previously this was a BackgroundTasks
     # callback (BUG-47) which caused a 1-turn delay: the frontend refetched
     # session data before extraction had written to the DB. The gpt-4o-mini
     # extraction call adds ~200-400ms, acceptable since the user is already
     # waiting for the main LLM response (~1-2s).
+    extracted_answers: dict | None = None
     try:
         extraction_service = ProfileExtractionService()
         extraction_result = await extraction_service.extract_and_update(
@@ -725,6 +770,7 @@ async def send_message(
                 conversation_id,
                 extraction_result.get("keys_extracted", []),
             )
+            extracted_answers = extraction_result.get("extracted_answers")
     except Exception as e:
         logger.error("Profile extraction failed for conversation %s: %s", conversation_id, e, exc_info=True)
 
@@ -741,9 +787,10 @@ async def send_message(
             if extracted_members or extracted_date:
                 invitations_sent: list[str] = []
 
-                # Persist to session greenlight data
-                session_service = SessionService()
+                # Persist greenlight data
                 if session_id:
+                    # Anonymous → persist to sessions table
+                    session_service = SessionService()
                     session_data = await session_service.get_session_by_id(session_id)
                     current_gl = (session_data or {}).get("greenlight", {}) or {}
 
@@ -765,6 +812,38 @@ async def send_message(
                     if updates:
                         merged_gl = {**current_gl, **updates}
                         await session_service.update_session(session_id, {"greenlight": merged_gl})
+                elif profile_id:
+                    # Authenticated → persist to discovery_profiles table
+                    dp_service = DiscoveryProfileService()
+                    company_service = CompanyService()
+                    company = await company_service.get_user_company(profile_id)
+                    company_id = UUID(company["id"]) if company else None
+
+                    existing = await dp_service.get_for_user(profile_id, company_id)
+                    current_gl = (existing or {}).get("greenlight", {}) or {}
+
+                    updates: dict = {}
+                    if extracted_date:
+                        updates["target_start_date"] = extracted_date
+
+                    if extracted_members:
+                        existing_members = current_gl.get("team_members", [])
+                        existing_emails = {m.get("email") for m in existing_members}
+                        new_members = [
+                            {"email": m["email"], "name": m.get("name", ""), "role": m.get("role", "")}
+                            for m in extracted_members
+                            if m["email"] not in existing_emails
+                        ]
+                        if new_members:
+                            updates["team_members"] = existing_members + new_members
+
+                    if updates:
+                        merged_gl = {**current_gl, **updates}
+                        await dp_service.update(
+                            profile_id,
+                            DiscoveryProfileUpdate(greenlight=merged_gl),
+                            company_id=company_id,
+                        )
 
                 # Send invitations if user is authenticated with a company
                 if extracted_members and profile_id:
@@ -807,6 +886,7 @@ async def send_message(
         chips=chips,
         discovery_state=discovery_state,
         greenlight_actions=greenlight_actions,
+        extracted_answers=extracted_answers,
     )
 
 

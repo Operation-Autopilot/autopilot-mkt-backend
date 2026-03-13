@@ -106,6 +106,7 @@ IMPORTANT RULES:
 6. Return an empty answers object {} if no extractable data is found
 7. NEVER reduce answers to "true", "false", "yes", or "no" - always capture the FULL user response with context
 8. Preserve the user's complete phrasing (e.g., "Yes, we have a budget around $5000" NOT "true" or "Yes")
+9. If the user provides a new way to express their cleaning costs (e.g., hourly rate after previously giving total spend, or vice versa), extract the NEW values. The system will handle conflict resolution.
 
 CRITICAL: Company Name vs Company Type Distinction
 - company_name: The actual business/organization name (e.g., "Downtown Pickleball Club", "Smith's Tennis Center", "Joe's Restaurant", "ABC Warehouse"). This is a specific, unique name for the business.

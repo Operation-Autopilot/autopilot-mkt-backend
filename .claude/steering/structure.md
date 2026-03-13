@@ -87,6 +87,7 @@ autopilot-mkt-backend/
 │   ├── supabase.py
 │   ├── token_budget.py
 ├── scripts/
+│   ├── deactivate_robots.py
 │   ├── debug_conversations.py
 │   ├── deploy-cloud-run.sh
 │   ├── dev-server.sh
@@ -101,12 +102,14 @@ autopilot-mkt-backend/
 │   ├── setup-secrets.sh
 │   ├── stripe_dev.sh
 │   ├── sync_stripe_products.py
+│   ├── test_hubspot.py
 │   ├── update-steering.mjs
 │   ├── upload_new_images.py
 │   ├── upload_robot_images.py
 │   ├── validate_robot_images.py
-└── supabase/migrations/  (25 files)
-    └── ...025_mt1_vac_image_updates.sql  ← last applied
+│   ├── verify_secrets.py
+└── supabase/migrations/  (28 files)
+    └── ...028_add_revoked_invitation_status.sql  ← last applied
 ```
 <!-- AUTO-TREE:END -->
 
@@ -307,4 +310,7 @@ class {Resource}Response({Resource}Base):
 - `023_add_test_robot.sql` — 023_add_test_robot.sql
 - `024_court_type_surfaces.sql` — Add court type surfaces (CushionX, Acrylic, Concrete) to pickleball-capable robots
 - `025_mt1_vac_image_updates.sql` — MT1 Vac image corrections
+- `026_company_scoped_discovery_profiles.sql` — Make discovery profiles company-scoped
+- `027_robot_spec_corrections.sql` — 027_robot_spec_corrections.sql
+- `028_add_revoked_invitation_status.sql` — 028 add revoked invitation status
 <!-- AUTO-MIGRATIONS:END -->

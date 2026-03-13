@@ -109,6 +109,10 @@ class MessageWithAgentResponse(BaseModel):
         default=None,
         description="Greenlight actions extracted from conversation (only in greenlight phase)"
     )
+    extracted_answers: dict[str, Any] | None = Field(
+        default=None,
+        description="Discovery answers extracted from this message (for optimistic frontend update)"
+    )
 
 
 class MessageListResponse(BaseModel):

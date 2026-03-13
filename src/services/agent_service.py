@@ -817,7 +817,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             from src.services.company_service import CompanyService
 
             discovery_service = DiscoveryProfileService()
-            discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+            discovery_profile = await discovery_service.get_for_user(profile_id)
             if discovery_profile:
                 current_answers = discovery_profile.get("answers", {})
 
@@ -1039,7 +1039,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
             from src.services.company_service import CompanyService
 
             discovery_service = DiscoveryProfileService()
-            discovery_profile = await discovery_service.get_by_profile_id(profile_id)
+            discovery_profile = await discovery_service.get_for_user(profile_id)
             if discovery_profile:
                 current_answers = discovery_profile.get("answers", {})
                 # Get selected robot if available
@@ -1307,7 +1307,7 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
                 company_service = CompanyService()
 
                 # Parallel fetch of discovery profile and company
-                profile_task = discovery_service.get_by_profile_id(profile_id)
+                profile_task = discovery_service.get_for_user(profile_id)
                 company_task = company_service.get_user_company(profile_id)
                 discovery_profile, company = await asyncio.gather(
                     profile_task, company_task
@@ -1480,6 +1480,12 @@ IMPORTANT: Your response must be valid JSON with content (string), chips (array)
         ]
         for msg in recent_messages:
             messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # Ensure current message is always the last user turn.
+        # fetch_conversation_history runs in parallel with store_user_message,
+        # so the DB SELECT may miss the just-INSERTed row.
+        if not recent_messages or recent_messages[-1].get("content") != user_message:
+            messages.append({"role": "user", "content": user_message})
 
         # Determine budget key and check token budget
         budget_key: str | None = None

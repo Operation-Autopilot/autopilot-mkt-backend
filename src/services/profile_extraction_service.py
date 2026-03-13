@@ -104,8 +104,10 @@ class ProfileExtractionService:
             if not validated_answers:
                 return {"extracted_count": 0, "reason": "No valid answers extracted"}
 
-            # 5. Merge and update
-            merged_answers = {**current_answers, **validated_answers}
+            # 5. Resolve cost-field conflicts, then merge
+            merged_answers = self._resolve_cost_conflicts(
+                current_answers, validated_answers
+            )
 
             await self._update_target(
                 session_id=session_id,
@@ -125,6 +127,7 @@ class ProfileExtractionService:
                 "extracted_count": len(validated_answers),
                 "confidence": extraction_result.get("extraction_confidence", "medium"),
                 "keys_extracted": list(validated_answers.keys()),
+                "extracted_answers": validated_answers,
             }
 
         except Exception as e:
@@ -141,7 +144,7 @@ class ProfileExtractionService:
             session = await self.session_service.get_session_by_id(session_id)
             return session.get("answers", {}) if session else {}
         elif profile_id:
-            profile = await self.discovery_profile_service.get_by_profile_id(profile_id)
+            profile = await self.discovery_profile_service.get_for_user(profile_id)
             return profile.get("answers", {}) if profile else {}
         return {}
 
@@ -213,6 +216,42 @@ class ProfileExtractionService:
             logger.error("JSON decode error in extraction: %s", str(e))
             return {"answers": {}, "error": str(e)}
 
+    @staticmethod
+    def _resolve_cost_conflicts(
+        current_answers: dict[str, Any],
+        new_answers: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resolve mutually-exclusive cost-field conflicts before merging.
+
+        Two cost approaches exist:
+          - Direct spend: ``monthly_spend`` (user stated a total)
+          - Derived spend: ``hourly_rate``, ``staff_count`` (components)
+
+        When the user switches approach the stale fields must be cleared so
+        ``roi_service.derive_roi_inputs()`` picks the correct tier.
+        """
+        merged = {**current_answers, **new_answers}
+
+        has_new_monthly = (
+            "monthly_spend" in new_answers
+            and new_answers["monthly_spend"].get("value", "").lower()
+            not in ("", "unknown", "don't know")
+        )
+        has_new_derived = "hourly_rate" in new_answers or "staff_count" in new_answers
+
+        if has_new_monthly and not has_new_derived:
+            # User gave a direct total → clear derived cost fields
+            merged.pop("hourly_rate", None)
+            merged.pop("staff_count", None)
+        elif has_new_derived and not has_new_monthly:
+            # User gave hourly/staff data → invalidate stale monthly_spend
+            if "monthly_spend" in merged:
+                stale = dict(merged["monthly_spend"])
+                stale["value"] = "unknown"
+                merged["monthly_spend"] = stale
+
+        return merged
+
     def _validate_and_enrich_answers(
         self,
         answers: dict[str, Any],
@@ -261,6 +300,12 @@ class ProfileExtractionService:
                 from src.schemas.discovery import DiscoveryProfileUpdate
 
                 claimed_profile_id = UUID(str(session["claimed_by_profile_id"]))
+                # Resolve company_id for the claimed user
+                from src.services.company_service import CompanyService
+                company_service = CompanyService()
+                company = await company_service.get_user_company(claimed_profile_id)
+                claimed_company_id = UUID(company["id"]) if company else None
+
                 profile_update = DiscoveryProfileUpdate(answers=answers)
                 if roi_inputs:
                     valid_roi = {
@@ -278,7 +323,9 @@ class ProfileExtractionService:
                             "manualMonthlyHours": valid_roi.get("manualMonthlyHours", 0),
                         }
                         profile_update.roi_inputs = ROIInputsSchema(**full_roi)
-                await self.discovery_profile_service.update(claimed_profile_id, profile_update)
+                await self.discovery_profile_service.update(
+                    claimed_profile_id, profile_update, company_id=claimed_company_id
+                )
                 return
 
             update_data = SessionUpdate(answers=answers)
@@ -323,4 +370,11 @@ class ProfileExtractionService:
                         "manualMonthlyHours": valid_roi.get("manualMonthlyHours", 0),
                     }
                     update_data.roi_inputs = ROIInputsSchema(**full_roi)
-            await self.discovery_profile_service.update(profile_id, update_data)
+            # Resolve company_id for the user
+            from src.services.company_service import CompanyService
+            company_service = CompanyService()
+            company = await company_service.get_user_company(profile_id)
+            company_id = UUID(company["id"]) if company else None
+            await self.discovery_profile_service.update(
+                profile_id, update_data, company_id=company_id
+            )

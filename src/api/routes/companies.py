@@ -273,3 +273,35 @@ async def list_invitations(
     service = InvitationService()
     invitations = await service.list_company_invitations(company_id)
     return [InvitationResponse(**inv) for inv in invitations]
+
+
+@router.post(
+    "/{company_id}/invitations/{invitation_id}/revoke",
+    response_model=InvitationResponse,
+    summary="Revoke invitation",
+    description="Revokes a pending invitation. Only the company owner can revoke invitations.",
+)
+async def revoke_invitation(
+    company_id: UUID,
+    invitation_id: UUID,
+    user: CurrentUser,
+) -> InvitationResponse:
+    """Revoke a pending invitation.
+
+    Args:
+        company_id: The company's UUID.
+        invitation_id: The invitation's UUID.
+        user: The authenticated user context.
+
+    Returns:
+        InvitationResponse: The updated invitation.
+
+    Raises:
+        HTTPException: 403 if not owner.
+    """
+    profile_id = await _get_user_profile_id(user)
+    await _check_owner_access(company_id, profile_id)
+
+    service = InvitationService()
+    invitation = await service.revoke_invitation(invitation_id, company_id, profile_id)
+    return InvitationResponse(**invitation)

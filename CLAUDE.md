@@ -33,15 +33,15 @@ The secret key format `sb_secret_...` replaces the old JWT-based service role ke
 
 ## Database Migrations
 
-Migrations are located in `supabase/migrations/` and follow sequential numbering. **Last applied: 014.**
+Migrations are located in `supabase/migrations/` and follow sequential numbering. **26 migrations exist (001–026).**
 
 - `001_create_profiles.sql` - User profiles linked to auth.users
 - `002_create_companies.sql` - Companies, members, invitations (with non-recursive RLS)
 - `003_create_conversations.sql` - Conversations and messages
 - `004_create_sessions.sql` - Anonymous session management
 - `005_create_discovery_profiles.sql` - Authenticated user discovery progress
-- `006_create_robot_catalog.sql` - Robot products with Stripe integration (seeds 13 robots)
-- `007_create_orders.sql` - Checkout orders (`order_status` enum: pending/processing/completed/cancelled/refunded)
+- `006_create_robot_catalog.sql` - Robot products with Stripe integration (seeds 22 robots, 13 active)
+- `007_create_orders.sql` - Checkout orders (`order_status` enum: pending/payment_pending/completed/cancelled/refunded)
 - `008_rename_conversations_user_id.sql` - Rename user_id → profile_id on conversations
 - `009_add_cached_recommendations.sql` - `answers_hash` + `cached_recommendations` on discovery_profiles
 - `010_make_stripe_checkout_session_id_nullable.sql` - Make `stripe_checkout_session_id` nullable (supports Gynger)
@@ -49,10 +49,20 @@ Migrations are located in `supabase/migrations/` and follow sequential numbering
 - `012_create_floor_plan_analysis.sql` - Floor plan upload + GPT-4o Vision analysis results
 - `013_add_payment_pending_status.sql` - Add `payment_pending` to order_status enum (ACH)
 - `014_add_gynger_to_orders.sql` - `gynger_application_id` + `payment_provider` columns on orders
+- `015_add_purchase_price_ids.sql` - Stripe purchase price IDs for one-time purchase mode
+- `016_enable_sessions_rls.sql` - Enable RLS policies on sessions table
+- `017_pickleball_messaging.sql` - Pickleball robot messaging (CC1 Pro/C40/C30 court types)
+- `018_data_corrections.sql` - Spec corrections (Neo 2W nav, T380AMR runtime, Scrubber/Omnie/Vacuum 40)
+- `019_add_purchase_price_ids.sql` - *(duplicate of 015 — no-op)*
+- `020_enable_sessions_rls.sql` - *(duplicate of 016 — no-op)*
+- `021_set_inactive_robots.sql` - Mark 9 robots inactive (Beetle, Omnie, Scrubber 50/75, T16AMR, C20, C55, Marvel, Mira)
+- `022_robot_image_updates.sql` - Update robot images to OEM photos
+- `023_add_test_robot.sql` - Seed Penny test robot for E2E testing
+- `024_court_type_surfaces.sql` - Add CushionX, Acrylic, Concrete court surface types
+- `025_mt1_vac_image_updates.sql` - Update MT1 Vac images
+- `026_company_scoped_discovery_profiles.sql` - Add `company_id` to discovery_profiles for shared company discovery data
 
-**Migrations 015–016 are PLANNED but not yet created:**
-- `015_hubspot_connections.sql` - HubSpot OAuth token storage (planned)
-- `016_session_shares.sql` - Public share link tokens and snapshots (planned)
+> **Note:** Migrations 019 and 020 are accidental duplicates of 015 and 016 (idempotent no-ops).
 
 ### RLS Policy Guidelines
 

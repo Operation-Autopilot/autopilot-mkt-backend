@@ -41,22 +41,82 @@ def compute_answers_hash(answers: dict[str, Any]) -> str:
 
 
 class DiscoveryProfileService(BaseService):
-    """Service for managing authenticated user discovery profiles."""
+    """Service for managing authenticated user discovery profiles.
+
+    Discovery profiles are company-scoped when the user belongs to a company.
+    All company members share the same discovery data. Solo users (no company)
+    have a personal discovery profile keyed by profile_id.
+    """
 
     def __init__(self) -> None:
         """Initialize discovery profile service with Supabase client."""
         self.client = get_supabase_client()
 
-    async def get_or_create(self, profile_id: UUID) -> dict[str, Any]:
-        """Get existing discovery profile or create a new one.
+    async def get_by_company_id(self, company_id: UUID) -> dict[str, Any] | None:
+        """Get a discovery profile by company ID.
+
+        Args:
+            company_id: The company's UUID.
+
+        Returns:
+            dict | None: The discovery profile data or None if not found.
+        """
+        query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("company_id", str(company_id))
+            .maybe_single()
+        )
+        response = await self._execute_sync(query)
+        return response.data if response and response.data else None
+
+    async def get_for_user(self, profile_id: UUID) -> dict[str, Any] | None:
+        """Get the discovery profile for a user, resolving via company if applicable.
+
+        Checks company membership first and returns the shared company profile.
+        Falls back to the user's personal profile if no company.
 
         Args:
             profile_id: The user's profile UUID.
 
         Returns:
+            dict | None: The discovery profile data or None if not found.
+        """
+        from src.services.company_service import CompanyService
+
+        company_service = CompanyService()
+        company = await company_service.get_user_company(profile_id)
+
+        if company:
+            company_profile = await self.get_by_company_id(UUID(company["id"]))
+            if company_profile:
+                return company_profile
+
+        # Fall back to personal profile
+        return await self.get_by_profile_id(profile_id)
+
+    async def get_or_create(
+        self, profile_id: UUID, company_id: UUID | None = None
+    ) -> dict[str, Any]:
+        """Get existing discovery profile or create a new one.
+
+        When company_id is provided, looks up by company first. Falls back
+        to profile_id lookup, then creates a new profile if none exists.
+
+        Args:
+            profile_id: The user's profile UUID.
+            company_id: Optional company UUID for company-scoped profiles.
+
+        Returns:
             dict: The discovery profile data.
         """
-        # First try to get existing profile
+        # Try company lookup first
+        if company_id:
+            existing = await self.get_by_company_id(company_id)
+            if existing:
+                return existing
+
+        # Try personal profile lookup
         query = (
             self.client.table("discovery_profiles")
             .select("*")
@@ -65,21 +125,31 @@ class DiscoveryProfileService(BaseService):
         response = await self._execute_sync(query)
 
         if response.data:
-            return response.data[0]
+            existing = response.data[0]
+            # If user now has a company but their profile doesn't, link it
+            if company_id and not existing.get("company_id"):
+                link_query = (
+                    self.client.table("discovery_profiles")
+                    .update({"company_id": str(company_id)})
+                    .eq("id", existing["id"])
+                )
+                link_response = await self._execute_sync(link_query)
+                if link_response.data:
+                    return link_response.data[0]
+            return existing
 
-        # Create new discovery profile if not exists
-        profile_data = {
+        # Create new discovery profile
+        profile_data: dict[str, Any] = {
             "profile_id": str(profile_id),
             "current_question_index": 0,
             "phase": "discovery",
             "answers": {},
             "selected_product_ids": [],
         }
+        if company_id:
+            profile_data["company_id"] = str(company_id)
 
-        query = (
-            self.client.table("discovery_profiles")
-            .insert(profile_data)
-        )
+        query = self.client.table("discovery_profiles").insert(profile_data)
         response = await self._execute_sync(query)
 
         if not response.data:
@@ -87,7 +157,10 @@ class DiscoveryProfileService(BaseService):
         return response.data[0]
 
     async def get_by_profile_id(self, profile_id: UUID) -> dict[str, Any] | None:
-        """Get a discovery profile by profile ID.
+        """Get a discovery profile by profile ID (direct lookup).
+
+        For most use cases, prefer get_for_user() which resolves via company.
+        This method is kept for internal use and backward compatibility.
 
         Args:
             profile_id: The user's profile UUID.
@@ -116,16 +189,39 @@ class DiscoveryProfileService(BaseService):
             logger.warning("No discovery_profile found for profile_id=%s", profile_id)
             return None
 
+    async def _resolve_profile(
+        self, profile_id: UUID, company_id: UUID | None = None
+    ) -> dict[str, Any] | None:
+        """Resolve the correct discovery profile for operations.
+
+        Args:
+            profile_id: The user's profile UUID.
+            company_id: Optional company UUID.
+
+        Returns:
+            dict | None: The resolved discovery profile or None.
+        """
+        if company_id:
+            result = await self.get_by_company_id(company_id)
+            if result:
+                return result
+        return await self.get_by_profile_id(profile_id)
+
     async def update(
         self,
         profile_id: UUID,
         data: DiscoveryProfileUpdate,
+        company_id: UUID | None = None,
     ) -> dict[str, Any] | None:
         """Update a discovery profile.
+
+        When company_id is provided, updates the company's profile.
+        Otherwise updates by profile_id.
 
         Args:
             profile_id: The user's profile UUID.
             data: The fields to update.
+            company_id: Optional company UUID for company-scoped update.
 
         Returns:
             dict | None: The updated discovery profile data or None if not found.
@@ -163,13 +259,21 @@ class DiscoveryProfileService(BaseService):
 
         if not update_data:
             # No changes, return current profile
-            return await self.get_by_profile_id(profile_id)
+            return await self._resolve_profile(profile_id, company_id)
 
-        query = (
-            self.client.table("discovery_profiles")
-            .update(update_data)
-            .eq("profile_id", str(profile_id))
-        )
+        # Update by company_id when available, otherwise by profile_id
+        if company_id:
+            query = (
+                self.client.table("discovery_profiles")
+                .update(update_data)
+                .eq("company_id", str(company_id))
+            )
+        else:
+            query = (
+                self.client.table("discovery_profiles")
+                .update(update_data)
+                .eq("profile_id", str(profile_id))
+            )
         response = await self._execute_sync(query)
 
         return response.data[0] if response.data else None
@@ -178,6 +282,7 @@ class DiscoveryProfileService(BaseService):
         self,
         profile_id: UUID,
         session_data: dict[str, Any],
+        company_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Create a discovery profile from session data.
 
@@ -186,14 +291,15 @@ class DiscoveryProfileService(BaseService):
         Args:
             profile_id: The user's profile UUID.
             session_data: The session data to copy.
+            company_id: Optional company UUID for company-scoped profile.
 
         Returns:
             dict: The created discovery profile.
         """
-        # Check if discovery profile already exists
-        existing = await self.get_by_profile_id(profile_id)
+        # Check if discovery profile already exists (company or personal)
+        existing = await self._resolve_profile(profile_id, company_id)
 
-        profile_data = {
+        profile_data: dict[str, Any] = {
             "current_question_index": session_data.get("current_question_index", 0),
             "phase": session_data.get("phase", "discovery"),
             "answers": session_data.get("answers", {}),
@@ -208,12 +314,14 @@ class DiscoveryProfileService(BaseService):
             query = (
                 self.client.table("discovery_profiles")
                 .update(profile_data)
-                .eq("profile_id", str(profile_id))
+                .eq("id", existing["id"])
             )
             response = await self._execute_sync(query)
         else:
             # Create new profile
             profile_data["profile_id"] = str(profile_id)
+            if company_id:
+                profile_data["company_id"] = str(company_id)
             query = (
                 self.client.table("discovery_profiles")
                 .insert(profile_data)
@@ -226,17 +334,19 @@ class DiscoveryProfileService(BaseService):
         self,
         profile_id: UUID,
         current_answers: dict[str, Any],
+        company_id: UUID | None = None,
     ) -> dict[str, Any] | None:
         """Get cached recommendations if the answers hash matches.
 
         Args:
             profile_id: The user's profile UUID.
             current_answers: Current discovery answers to validate cache.
+            company_id: Optional company UUID.
 
         Returns:
             Cached recommendations dict or None if cache is invalid.
         """
-        profile = await self.get_by_profile_id(profile_id)
+        profile = await self._resolve_profile(profile_id, company_id)
         if not profile:
             return None
 
@@ -265,6 +375,7 @@ class DiscoveryProfileService(BaseService):
         profile_id: UUID,
         answers: dict[str, Any],
         recommendations: dict[str, Any],
+        company_id: UUID | None = None,
     ) -> None:
         """Store cached recommendations with answers hash.
 
@@ -272,14 +383,20 @@ class DiscoveryProfileService(BaseService):
             profile_id: The user's profile UUID.
             answers: Current discovery answers (used for hash).
             recommendations: Recommendations response to cache.
+            company_id: Optional company UUID.
         """
         answers_hash = compute_answers_hash(answers)
 
         try:
+            dp = await self._resolve_profile(profile_id, company_id)
+            if not dp:
+                logger.warning("No discovery profile found for caching recommendations")
+                return
+
             query = self.client.table("discovery_profiles").update({
                 "answers_hash": answers_hash,
                 "cached_recommendations": recommendations,
-            }).eq("profile_id", str(profile_id))
+            }).eq("id", dp["id"])
             await self._execute_sync(query)
 
             logger.info(
@@ -290,17 +407,24 @@ class DiscoveryProfileService(BaseService):
             # Don't fail the request if caching fails
             logger.error("Failed to cache recommendations: %s", e)
 
-    async def invalidate_recommendations_cache(self, profile_id: UUID) -> None:
+    async def invalidate_recommendations_cache(
+        self, profile_id: UUID, company_id: UUID | None = None
+    ) -> None:
         """Invalidate cached recommendations when answers change.
 
         Args:
             profile_id: The user's profile UUID.
+            company_id: Optional company UUID.
         """
         try:
+            dp = await self._resolve_profile(profile_id, company_id)
+            if not dp:
+                return
+
             query = self.client.table("discovery_profiles").update({
                 "answers_hash": None,
                 "cached_recommendations": None,
-            }).eq("profile_id", str(profile_id))
+            }).eq("id", dp["id"])
             await self._execute_sync(query)
 
             logger.debug("Invalidated recommendations cache for profile %s", profile_id)
@@ -312,6 +436,7 @@ class DiscoveryProfileService(BaseService):
         profile_id: UUID,
         extracted_features: ExtractedFeaturesSchema,
         cost_estimate: CostEstimateSchema,
+        company_id: UUID | None = None,
     ) -> dict[str, Any] | None:
         """Update discovery profile with data extracted from floor plan analysis.
 
@@ -322,12 +447,13 @@ class DiscoveryProfileService(BaseService):
             profile_id: The user's profile UUID.
             extracted_features: Features extracted from floor plan via GPT-4o.
             cost_estimate: Calculated cleaning cost estimate.
+            company_id: Optional company UUID.
 
         Returns:
             Updated discovery profile or None if update fails.
         """
         # Ensure profile exists
-        profile = await self.get_or_create(profile_id)
+        profile = await self.get_or_create(profile_id, company_id=company_id)
 
         # Get existing answers
         existing_answers = profile.get("answers", {})
@@ -361,12 +487,12 @@ class DiscoveryProfileService(BaseService):
             query = (
                 self.client.table("discovery_profiles")
                 .update(update_data)
-                .eq("profile_id", str(profile_id))
+                .eq("id", profile["id"])
             )
             response = await self._execute_sync(query)
 
             # Invalidate recommendations cache since answers changed
-            await self.invalidate_recommendations_cache(profile_id)
+            await self.invalidate_recommendations_cache(profile_id, company_id=company_id)
 
             logger.info(
                 "Updated discovery profile %s from floor plan: %d answers populated",

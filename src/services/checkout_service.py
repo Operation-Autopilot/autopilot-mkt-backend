@@ -18,6 +18,20 @@ from src.services.robot_catalog_service import RobotCatalogService
 
 logger = logging.getLogger(__name__)
 
+
+def _answer_val(answers: dict, key: str) -> str:
+    """Extract the value string from a discovery answer dict entry.
+
+    Handles both `{value: "..."}` dicts and plain strings.
+    Returns empty string if key is missing or value is falsy.
+    """
+    answer = answers.get(key)
+    if answer is None:
+        return ""
+    if isinstance(answer, dict):
+        return str(answer.get("value", "")) if answer.get("value") else ""
+    return str(answer) if answer else ""
+
 ALLOWED_REDIRECT_DOMAINS = {
     "localhost",
     "tryautopilot.com",
@@ -176,6 +190,38 @@ class CheckoutService(BaseService):
         order = order_response.data[0]
         order_id = order["id"]
 
+        # Resolve customer email from profile if not provided (defense in depth for HubSpot)
+        if not customer_email and profile_id:
+            try:
+                profile_row = await self._execute_sync(
+                    self.client.table("profiles")
+                    .select("email")
+                    .eq("id", str(profile_id))
+                    .maybe_single()
+                )
+                if profile_row.data:
+                    customer_email = profile_row.data.get("email")
+            except Exception:
+                logger.debug("Could not resolve email from profile %s", profile_id)
+
+        # Load session data for HubSpot enrichment
+        session_answers: dict = {}
+        target_start_date = ""
+        if session_id:
+            try:
+                sess_row = await self._execute_sync(
+                    self.client.table("sessions")
+                    .select("answers, greenlight")
+                    .eq("id", str(session_id))
+                    .maybe_single()
+                )
+                if sess_row.data:
+                    session_answers = sess_row.data.get("answers") or {}
+                    gl = sess_row.data.get("greenlight") or {}
+                    target_start_date = gl.get("target_start_date") or ""
+            except Exception:
+                logger.debug("Could not load session %s for HubSpot enrichment", session_id)
+
         # HubSpot: create Lead deal at checkout initiation (awaited so we get the deal_id back)
         hubspot_deal_id: str | None = None
         if self.settings.hubspot_access_token and customer_email:
@@ -196,6 +242,15 @@ class CheckoutService(BaseService):
                     company_name=company_name,
                     robot_name=robot["name"],
                     amount_usd=total_cents / 100,
+                    order_id=str(order_id),
+                    payment_type=payment_type,
+                    payment_provider="stripe",
+                    sqft=_answer_val(session_answers, "sqft"),
+                    monthly_spend=_answer_val(session_answers, "monthly_spend"),
+                    company_type=_answer_val(session_answers, "company_type"),
+                    cleaning_method=_answer_val(session_answers, "method"),
+                    cleaning_frequency=_answer_val(session_answers, "frequency"),
+                    target_start_date=target_start_date,
                 )
             except Exception:
                 logger.exception("HubSpot checkout deal creation failed for order %s (non-fatal)", order_id)
@@ -361,6 +416,46 @@ class CheckoutService(BaseService):
                         )
                     )
 
+            # Send order confirmation email (fire-and-forget)
+            if log_status == "completed" and customer_email:
+                try:
+                    from src.services.email_service import EmailService
+                    line_items = order.get("line_items") or []
+                    robot_name = line_items[0]["product_name"] if line_items else "Robot"
+                    total_cents = order.get("total_cents", 0)
+                    pay_type = (order.get("metadata") or {}).get("payment_type", "lease")
+                    if pay_type == "purchase":
+                        amount_display = f"${total_cents / 100:,.0f}"
+                    else:
+                        amount_display = f"${total_cents / 100:,.0f}/mo"
+                    # Load target_start_date from session if available
+                    tsd = ""
+                    sid = order.get("session_id")
+                    if sid:
+                        try:
+                            sr = await self._execute_sync(
+                                self.client.table("sessions")
+                                .select("greenlight")
+                                .eq("id", sid)
+                                .maybe_single()
+                            )
+                            if sr.data:
+                                tsd = (sr.data.get("greenlight") or {}).get("target_start_date") or ""
+                        except Exception:
+                            pass
+                    asyncio.create_task(
+                        EmailService().send_order_confirmation_email(
+                            to_email=customer_email,
+                            robot_name=robot_name,
+                            amount_display=amount_display,
+                            payment_type=pay_type,
+                            order_id=str(order.get("id", "")),
+                            target_start_date=tsd or None,
+                        )
+                    )
+                except Exception:
+                    logger.debug("Order confirmation email task creation failed (non-fatal)")
+
             return order
 
         logger.warning("Order not found for completion: %s", order_id)
@@ -409,7 +504,61 @@ class CheckoutService(BaseService):
 
         if response.data:
             logger.info("Order %s async payment succeeded, marked as completed", order_id)
-            return response.data[0]
+            order = response.data[0]
+
+            # HubSpot: move Lead deal to Closed Won (fire-and-forget)
+            if self.settings.hubspot_access_token:
+                hs_deal_id = (order.get("metadata") or {}).get("hubspot_deal_id")
+                if hs_deal_id:
+                    from src.services.hubspot_service import HubSpotService
+                    asyncio.create_task(
+                        HubSpotService().on_deal_closed(
+                            deal_id=hs_deal_id,
+                            amount_usd=order.get("total_cents", 0) / 100,
+                        )
+                    )
+
+            # Send order confirmation email (fire-and-forget)
+            customer_email = order.get("customer_email")
+            if customer_email:
+                try:
+                    from src.services.email_service import EmailService
+                    line_items = order.get("line_items") or []
+                    robot_name = line_items[0]["product_name"] if line_items else "Robot"
+                    total_cents = order.get("total_cents", 0)
+                    pay_type = (order.get("metadata") or {}).get("payment_type", "lease")
+                    if pay_type == "purchase":
+                        amount_display = f"${total_cents / 100:,.0f}"
+                    else:
+                        amount_display = f"${total_cents / 100:,.0f}/mo"
+                    tsd = ""
+                    sid = order.get("session_id")
+                    if sid:
+                        try:
+                            sr = await self._execute_sync(
+                                self.client.table("sessions")
+                                .select("greenlight")
+                                .eq("id", sid)
+                                .maybe_single()
+                            )
+                            if sr.data:
+                                tsd = (sr.data.get("greenlight") or {}).get("target_start_date") or ""
+                        except Exception:
+                            pass
+                    asyncio.create_task(
+                        EmailService().send_order_confirmation_email(
+                            to_email=customer_email,
+                            robot_name=robot_name,
+                            amount_display=amount_display,
+                            payment_type=pay_type,
+                            order_id=str(order.get("id", "")),
+                            target_start_date=tsd or None,
+                        )
+                    )
+                except Exception:
+                    logger.debug("Order confirmation email task creation failed (non-fatal)")
+
+            return order
 
         logger.warning("Order not found for async payment success: %s", order_id)
         return {}

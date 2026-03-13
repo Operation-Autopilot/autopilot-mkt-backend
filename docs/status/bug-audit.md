@@ -4,16 +4,18 @@ title: Bug Audit — March 2026
 
 # Bug Audit — March 2026
 
-Comprehensive analysis of all known bugs across git history, frontend code, and backend code. 60 issues identified, categorized by severity and user impact, organized into a 7-sprint fix plan.
+Comprehensive analysis of all known bugs across git history, frontend code, and backend code. 73 issues tracked in DMMS, categorized by severity and user impact, organized into a 7-sprint fix plan.
+
+> **Note:** The initial audit identified 60 bugs. 13 additional issues were filed during subsequent development sprints — see [Issues Tracker](./issues.md) for the full registry with live status.
 
 <div class="stats-grid">
-  <div class="stat-card"><div class="stat-value">60</div><div class="stat-label">Bugs Found</div></div>
-  <div class="stat-card"><div class="stat-value">5</div><div class="stat-label">Critical</div></div>
-  <div class="stat-card"><div class="stat-value">20</div><div class="stat-label">High</div></div>
-  <div class="stat-card"><div class="stat-value">27</div><div class="stat-label">Medium</div></div>
-  <div class="stat-card"><div class="stat-value">8</div><div class="stat-label">Low</div></div>
+  <div class="stat-card"><div class="stat-value">73</div><div class="stat-label">Bugs Found</div></div>
+  <div class="stat-card"><div class="stat-value">18</div><div class="stat-label">Critical</div></div>
+  <div class="stat-card"><div class="stat-value">21</div><div class="stat-label">High</div></div>
+  <div class="stat-card"><div class="stat-value">29</div><div class="stat-label">Medium</div></div>
+  <div class="stat-card"><div class="stat-value">5</div><div class="stat-label">Low</div></div>
   <div class="stat-card"><div class="stat-value">25</div><div class="stat-label">Resolved</div></div>
-  <div class="stat-card"><div class="stat-value">35</div><div class="stat-label">Open</div></div>
+  <div class="stat-card"><div class="stat-value">48</div><div class="stat-label">Open</div></div>
 </div>
 
 → See **[Issues Tracker](./issues.md)** for the full bug registry with live status.
@@ -218,15 +220,17 @@ G-04 (silent extraction failures) resolved. 3 remain open: session expiry duplic
 
 ## 7-Sprint Fix Plan
 
+Bugs marked ✅ have been resolved. Remaining bugs in each sprint are still planned.
+
 | Sprint | Focus | Bugs | Status |
 |--------|-------|------|--------|
-| 1 | Security & Payment | A-01, A-02, A-05, D-01, D-03 | <span class="badge-planned">planned</span> |
-| 2 | Recommendation Quality | B-01, B-03, B-07, B-10 | <span class="badge-planned">planned</span> |
-| 3 | Auth & Session Transitions | C-07, C-08, C-09, C-10, C-12, C-13, C-14 | <span class="badge-planned">planned</span> |
-| 4 | Chat & Agent State | E-01, E-02, E-04, E-05, E-10 | <span class="badge-planned">planned</span> |
-| 5 | ROI & Marketplace Display | F-01, F-02, F-03, F-05, F-06 | <span class="badge-planned">planned</span> |
-| 6 | Checkout Edge Cases | D-02, D-04, D-05, D-06, D-07 | <span class="badge-planned">planned</span> |
-| 7 | Infrastructure & Polish | G-01, G-02, G-03, G-04, B-08, F-07, F-08 | <span class="badge-planned">planned</span> |
+| 1 | Security & Payment | A-01, ~~A-02~~ ✅, A-05, D-01, D-03 | <span class="badge-planned">planned</span> |
+| 2 | Recommendation Quality | B-01, ~~B-03~~ ✅, ~~B-07~~ ✅, B-10 | <span class="badge-planned">planned</span> |
+| 3 | Auth & Session Transitions | ~~C-07~~ ✅, C-08, C-09, ~~C-10~~ ✅, ~~C-12~~ ✅, C-13, C-14 | <span class="badge-planned">planned</span> |
+| 4 | Chat & Agent State | E-01, E-02, E-04, E-05, ~~E-10~~ ✅ | <span class="badge-planned">planned</span> |
+| 5 | ROI & Marketplace Display | F-01, F-02, ~~F-03~~ ✅, F-05, F-06 | <span class="badge-planned">planned</span> |
+| 6 | Checkout Edge Cases | ~~D-02~~ ✅, D-04, D-05, D-06, D-07 | <span class="badge-planned">planned</span> |
+| 7 | Infrastructure & Polish | G-01, G-02, G-03, ~~G-04~~ ✅, B-08, F-07, F-08 | <span class="badge-planned">planned</span> |
 
 ---
 

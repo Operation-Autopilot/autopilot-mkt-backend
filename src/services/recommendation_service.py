@@ -191,7 +191,9 @@ class RecommendationService:
                 )
 
             # Step 4: Build response with ROI
-            response = self._build_response(scored, candidates, request)
+            # Fetch all active robots so _build_response can score any missing ones
+            all_robots = await self.robot_catalog.list_robots(active_only=True)
+            response = self._build_response(scored, candidates, request, all_robots)
 
             # Cache the response
             if use_cache:
@@ -385,8 +387,8 @@ class RecommendationService:
 
         scored: list[dict[str, Any]] = []
         for robot in candidates:
-            # Get base rule-based score and reasons
-            base_score, reasons = roi_service._score_robot_manual(robot, answers)
+            # Get base rule-based score and reasons (3-tuple: raw, display, reasons)
+            base_score, _display, reasons = roi_service._score_robot_manual(robot, answers)
 
             # Apply semantic similarity boost (up to 15 points)
             semantic_score = float(robot.get("_semantic_score", 0.5))
@@ -568,6 +570,7 @@ class RecommendationService:
         scored: list[dict[str, Any]],
         candidates: list[dict[str, Any]],
         request: RecommendationsRequest,
+        all_robots: list[dict[str, Any]] | None = None,
     ) -> RecommendationsResponse:
         """Build the final recommendations response.
 
@@ -663,15 +666,22 @@ class RecommendationService:
                     )
                 )
 
-        # Include any candidates that the LLM didn't score as other_options
+        # Score ALL active robots not already scored and add to other_options
         scored_ids = {s.get("robot_id") for s in scored}
-        for cand_id_str, robot in candidate_map.items():
-            if cand_id_str in scored_ids:
+        robots_to_score = all_robots if all_robots else list(candidate_map.values())
+        for robot in robots_to_score:
+            robot_id_str = str(robot.get("id"))
+            if robot_id_str in scored_ids:
                 continue
             try:
-                robot_id = UUID(cand_id_str)
+                robot_id = UUID(robot_id_str)
             except (ValueError, TypeError):
                 continue
+
+            # Deterministic score for robots outside LLM candidate pool
+            _raw_score, display_score, _reasons = roi_service._score_robot_manual(
+                robot, request.answers
+            )
 
             raw_image_url = robot.get("image_url", "")
             image_urls = [url.strip() for url in raw_image_url.split(",") if url.strip()] if raw_image_url else []
@@ -684,17 +694,22 @@ class RecommendationService:
                 monthly_lease=float(robot.get("monthly_lease", 0)),
                 time_efficiency=float(robot.get("time_efficiency", 0.8)),
                 image_urls=image_urls,
-                match_score=0.0,
+                match_score=min(display_score, 100.0),
+                purchase_price=float(robot["purchase_price"]) if robot.get("purchase_price") else None,
+                best_for=robot.get("best_for"),
                 modes=robot.get("modes", []),
                 surfaces=robot.get("surfaces", []),
                 key_reasons=robot.get("key_reasons", []),
                 specs=robot.get("specs", []),
             ))
 
+        # Sort other_options by match_score descending
+        other_options.sort(key=lambda o: o.match_score, reverse=True)
+
         return RecommendationsResponse(
             recommendations=recommendations,
             other_options=other_options,
-            total_robots_evaluated=len(candidates),
+            total_robots_evaluated=len(all_robots) if all_robots else len(candidates),
             algorithm_version=ALGORITHM_VERSION,
             generated_at=datetime.now(timezone.utc),
         )

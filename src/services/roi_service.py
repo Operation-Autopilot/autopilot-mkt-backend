@@ -28,7 +28,7 @@ from src.services.robot_catalog_service import RobotCatalogService
 logger = logging.getLogger(__name__)
 
 # Algorithm version for tracking
-ALGORITHM_VERSION_MANUAL = "2.1.0"
+ALGORITHM_VERSION_MANUAL = "2.2.0"
 ALGORITHM_VERSION_LLM = "2.0.0"
 
 # Spend mapping from discovery answer values to numeric amounts
@@ -77,6 +77,59 @@ INDUSTRY_SPEND_BENCHMARKS: dict[str, tuple[float, str]] = {
 }
 
 _DEFAULT_BENCHMARK: tuple[float, str] = (3000.0, "commercial facilities")
+
+
+def _estimate_workload_tier(answers: dict[str, Any]) -> Literal["heavy", "moderate", "light"]:
+    """Estimate facility workload tier from courts_count or sqft.
+
+    Returns:
+        'heavy' (8+ courts / 7000+ sqft), 'moderate' (4-7 / 3000-6999), 'light' (<4 / <3000).
+    """
+    import re
+
+    # Try courts_count first
+    courts_answer = answers.get("courts_count")
+    if courts_answer:
+        raw = str(courts_answer.get("value", "") if isinstance(courts_answer, dict) else courts_answer)
+        match = re.search(r"\d+", raw)
+        if match:
+            courts = int(match.group())
+            if courts >= 8:
+                return "heavy"
+            if courts >= 4:
+                return "moderate"
+            return "light"
+
+    # Fall back to sqft
+    sqft_answer = answers.get("sqft")
+    if sqft_answer:
+        raw = str(sqft_answer.get("value", "") if isinstance(sqft_answer, dict) else sqft_answer)
+        cleaned = raw.replace(",", "").replace(" ", "")
+        match = re.search(r"\d+", cleaned)
+        if match:
+            sqft = int(match.group())
+            if sqft >= 7000:
+                return "heavy"
+            if sqft >= 3000:
+                return "moderate"
+            return "light"
+
+    return "moderate"
+
+
+def _extract_coverage_rate(robot: dict[str, Any]) -> float:
+    """Extract coverage rate (m²/h) from robot specs. Returns 500 default."""
+    import re
+
+    specs = robot.get("specs", [])
+    for spec in specs:
+        spec_lower = spec.lower()
+        if "m²/h" in spec_lower or "m2/h" in spec_lower:
+            numbers = re.findall(r"(\d+)", spec)
+            if numbers:
+                nums = [int(n) for n in numbers]
+                return sum(nums) / len(nums)
+    return 500.0
 
 
 def _get_benchmark_for_facility(company_type: str) -> tuple[float, str] | None:
@@ -432,7 +485,7 @@ class ROIService:
         self,
         robot: dict[str, Any],
         answers: dict[str, DiscoveryAnswer],
-    ) -> tuple[float, list[RecommendationReason]]:
+    ) -> tuple[float, float, list[RecommendationReason]]:
         """Score a robot based on how well it matches the user's needs (manual algorithm).
 
         This is the original manual scoring algorithm used as a fallback
@@ -443,7 +496,8 @@ class ROIService:
             answers: Discovery answers for matching.
 
         Returns:
-            Tuple of (score, list of reasons).
+            Tuple of (raw_score, display_score, list of reasons).
+            display_score is clamped 0-100; raw_score is unclamped for sorting.
         """
         score = 50.0  # Base score
         reasons: list[RecommendationReason] = []
@@ -467,6 +521,8 @@ class ROIService:
         robot_best_for = robot.get("best_for", "").lower()
         robot_category = robot.get("category", "").lower()
         robot_monthly_lease = float(robot.get("monthly_lease", 0))
+        mode_count = len(robot_modes)
+        coverage = _extract_coverage_rate(robot)
 
         # --- Facility Type Matching ---
         facility_score = 0.0
@@ -585,10 +641,62 @@ class ROIService:
                 )
             )
 
-        # Clamp score to 0-100
-        score = max(0.0, min(100.0, score))
+        # --- Workload-Capacity Fit ---
+        workload_tier = _estimate_workload_tier(answers)
+        workload_score = 0.0
 
-        return score, reasons
+        if workload_tier == "heavy":
+            # 8+ courts: reward high coverage, multi-mode, large positioning
+            if coverage >= 900:
+                workload_score += 3.0
+            if mode_count >= 4:
+                workload_score += 2.0
+            if "large" in robot_best_for or "multi-court" in robot_best_for:
+                workload_score += 2.0
+        elif workload_tier == "light":
+            # <4 courts: reward compact, affordable, simpler
+            if coverage <= 800:
+                workload_score += 3.0
+            if robot_monthly_lease <= 600:
+                workload_score += 2.0
+            if mode_count <= 2:
+                workload_score += 1.0
+        else:
+            # moderate (4-7 courts)
+            if 600 <= coverage <= 1200:
+                workload_score += 2.0
+            if mode_count >= 3:
+                workload_score += 1.0
+
+        if workload_score > 0:
+            score += workload_score
+            reasons.append(
+                RecommendationReason(
+                    factor="Workload Fit",
+                    explanation=f"Well-sized for {workload_tier} workload facilities",
+                    score_impact=workload_score,
+                )
+            )
+
+        # --- Value Ratio micro-bonus (0-5 pts) ---
+        if robot_monthly_lease > 0 and mode_count > 0:
+            value_ratio = (mode_count / robot_monthly_lease) * 1000
+            value_bonus = min(5.0, max(0.0, (value_ratio - 1.0) * 0.9))
+            if value_bonus > 0.5:
+                score += value_bonus
+                reasons.append(
+                    RecommendationReason(
+                        factor="Value Ratio",
+                        explanation="Good modes-per-dollar ratio",
+                        score_impact=round(value_bonus, 1),
+                    )
+                )
+
+        # Raw score for sorting (unclamped), display score clamped to 0-100
+        raw_score = score
+        display_score = max(0.0, min(100.0, score))
+
+        return raw_score, display_score, reasons
 
     def _get_recommendation_label(
         self,
@@ -736,14 +844,24 @@ class ROIService:
         inputs = request.roi_inputs or self.derive_roi_inputs(request.answers)
 
         # Score and rank robots
-        scored_robots: list[tuple[dict[str, Any], float, list[RecommendationReason]]] = []
+        # Each entry: (robot, raw_score, display_score, reasons)
+        scored_robots: list[tuple[dict[str, Any], float, float, list[RecommendationReason]]] = []
 
         for robot in cleaning_robots:
-            score, reasons = self._score_robot_manual(robot, request.answers)
-            scored_robots.append((robot, score, reasons))
+            raw_score, display_score, reasons = self._score_robot_manual(robot, request.answers)
+            robot_monthly_lease = float(robot.get("monthly_lease", 0))
+            mode_count = len(robot.get("modes", []))
+            scored_robots.append((robot, raw_score, display_score, reasons))
 
-        # Sort by score descending
-        scored_robots.sort(key=lambda x: x[1], reverse=True)
+        # Sort by raw (unclamped) score descending, then by value ratio as tiebreaker
+        def _sort_key(entry: tuple) -> tuple:
+            robot, raw, _display, _reasons = entry
+            lease = float(robot.get("monthly_lease", 0))
+            modes = len(robot.get("modes", []))
+            value = (modes / lease) if lease > 0 else 0
+            return (-raw, -value)
+
+        scored_robots.sort(key=_sort_key)
 
         # Take top K for main recommendations
         top_robots = scored_robots[: request.top_k]
@@ -753,7 +871,7 @@ class ROIService:
         recommendations: list[RobotRecommendation] = []
         rank = 1
 
-        for robot, score, reasons in top_robots:
+        for robot, _raw, score, reasons in top_robots:
             # Safely convert robot ID to UUID first
             robot_id_str = robot.get("id")
             if not robot_id_str:
@@ -807,7 +925,7 @@ class ROIService:
         # Build other options from remaining robots
         other_options: list[OtherRobotOption] = []
 
-        for robot, score, _ in remaining_robots:
+        for robot, _raw, score, _ in remaining_robots:
             # Parse image URLs
             raw_image_url = robot.get("image_url", "")
             image_urls = (

@@ -38,6 +38,7 @@ class DiscoveryProfileResponse(BaseModel):
 
     id: UUID = Field(description="Discovery profile unique identifier")
     profile_id: UUID = Field(description="Associated user profile ID")
+    company_id: UUID | None = Field(default=None, description="Associated company ID (shared across company members)")
     current_question_index: int = Field(description="Current question index in discovery flow")
     phase: str = Field(description="Current discovery phase")
     answers: dict[str, DiscoveryAnswerSchema] = Field(default_factory=dict, description="Discovery answers")

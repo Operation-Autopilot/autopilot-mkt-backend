@@ -16,6 +16,7 @@ class DiscoveryProfile(TypedDict):
 
     id: UUID
     profile_id: UUID
+    company_id: UUID | None
     current_question_index: int
     phase: SessionPhase
     answers: dict[str, DiscoveryAnswer]
@@ -34,6 +35,7 @@ class DiscoveryProfileCreate(TypedDict, total=False):
     """
 
     profile_id: UUID
+    company_id: UUID | None
     current_question_index: int
     phase: SessionPhase
     answers: dict[str, DiscoveryAnswer]

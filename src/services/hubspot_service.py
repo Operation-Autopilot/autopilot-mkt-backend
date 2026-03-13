@@ -72,6 +72,7 @@ class HubSpotService:
                 "email": email,
                 "firstname": firstname,
                 "lastname": lastname,
+                "hs_lead_status": "NEW",
             }
             if company_name:
                 props["company"] = company_name
@@ -169,6 +170,23 @@ class HubSpotService:
             resp.raise_for_status()
             logger.debug("HubSpot: associated contact %s → deal %s", contact_id, deal_id)
 
+    async def update_company_properties(self, company_id: str, props: dict[str, str]) -> None:
+        """Update a HubSpot company with additional properties.
+
+        Only non-empty values are sent. Idempotent — safe to call multiple times.
+        """
+        filtered = {k: v for k, v in props.items() if v}
+        if not filtered:
+            return
+        async with httpx.AsyncClient(timeout=15) as http:
+            resp = await http.patch(
+                f"{self.BASE_URL}/crm/v3/objects/companies/{company_id}",
+                headers=self._headers(),
+                json={"properties": filtered},
+            )
+            resp.raise_for_status()
+            logger.debug("HubSpot: updated company %s with %d props", company_id, len(filtered))
+
     async def create_deal(
         self,
         contact_id: str,
@@ -179,6 +197,7 @@ class HubSpotService:
         robot_name: str,
         payment_provider: str,
         order_id: str,
+        extra_properties: dict[str, str] | None = None,
     ) -> str:
         """Create a HubSpot deal with inline associations to contact and company.
 
@@ -191,8 +210,10 @@ class HubSpotService:
             "dealstage": stage_id,
             "pipeline": self.settings.hubspot_pipeline_id,
             "closedate": date.today().isoformat(),
-            "hs_note_body": f"order_id={order_id} robot={robot_name} provider={payment_provider}",
+            "description": f"order_id={order_id} robot={robot_name} provider={payment_provider}",
         }
+        if extra_properties:
+            properties.update(extra_properties)
 
         associations = [
             {
@@ -225,6 +246,16 @@ class HubSpotService:
         company_name: str | None,
         robot_name: str,
         amount_usd: float,
+        *,
+        order_id: str = "",
+        payment_type: str = "",
+        payment_provider: str = "",
+        sqft: str = "",
+        monthly_spend: str = "",
+        company_type: str = "",
+        cleaning_method: str = "",
+        cleaning_frequency: str = "",
+        target_start_date: str = "",
     ) -> str | None:
         """Create a Lead deal when a user initiates checkout.
 
@@ -254,6 +285,39 @@ class HubSpotService:
             company_id = await self.find_or_create_company(company_name)
             await self.associate_contact_to_company(contact_id, company_id)
 
+            # Enrich company with discovery data
+            company_props: dict[str, str] = {}
+            if company_type:
+                company_props["company_type"] = company_type
+            if sqft:
+                company_props["square_footage"] = sqft
+            if monthly_spend:
+                company_props["monthly_cleaning_spend"] = monthly_spend
+            if cleaning_frequency:
+                company_props["cleaning_frequency"] = cleaning_frequency
+            if cleaning_method:
+                company_props["cleaning_ownership"] = cleaning_method
+            if target_start_date:
+                company_props["ideal_go_live_date"] = target_start_date
+            if company_props:
+                try:
+                    await self.update_company_properties(company_id, company_props)
+                except Exception:
+                    logger.debug("HubSpot: failed to update company %s properties (non-fatal)", company_id)
+
+        # Build extra deal properties from enrichment data
+        deal_extras: dict[str, str] = {
+            "robot_model": robot_name,
+            "dealtype": "newbusiness",
+        }
+        if amount_usd:
+            deal_extras["deal_value"] = str(round(amount_usd, 2))
+        if target_start_date:
+            deal_extras["deployment_date"] = target_start_date
+        if payment_provider:
+            deal_extras["financing_type"] = payment_provider
+            deal_extras["financing_required"] = "Yes" if payment_provider == "gynger" else "No"
+
         deal_id = await self.create_deal(
             contact_id=contact_id,
             company_id=company_id,
@@ -261,28 +325,36 @@ class HubSpotService:
             amount_usd=amount_usd,
             stage_id=self.settings.hubspot_deal_stage_lead,
             robot_name=robot_name,
-            payment_provider="checkout",
-            order_id="",
+            payment_provider=payment_provider or "checkout",
+            order_id=order_id,
+            extra_properties=deal_extras,
         )
         logger.info("HubSpot on_checkout_initiated: deal %s for %s (%s)", deal_id, email, robot_name)
         return deal_id
 
-    async def update_deal_stage(self, deal_id: str, stage_id: str, amount_usd: float) -> None:
+    async def update_deal_stage(
+        self,
+        deal_id: str,
+        stage_id: str,
+        amount_usd: float,
+        extra_properties: dict[str, str] | None = None,
+    ) -> None:
         """Update a deal's stage and amount.
 
         Does NOT catch exceptions — use on_deal_closed for fire-and-forget calls.
         """
+        props: dict[str, Any] = {
+            "dealstage": stage_id,
+            "amount": str(round(amount_usd, 2)),
+            "closedate": date.today().isoformat(),
+        }
+        if extra_properties:
+            props.update(extra_properties)
         async with httpx.AsyncClient(timeout=15) as http:
             resp = await http.patch(
                 f"{self.BASE_URL}/crm/v3/objects/deals/{deal_id}",
                 headers=self._headers(),
-                json={
-                    "properties": {
-                        "dealstage": stage_id,
-                        "amount": str(round(amount_usd, 2)),
-                        "closedate": date.today().isoformat(),
-                    }
-                },
+                json={"properties": props},
             )
             resp.raise_for_status()
             logger.info("HubSpot: deal %s → stage %s (amount=%.2f)", deal_id, stage_id, amount_usd)
@@ -297,6 +369,10 @@ class HubSpotService:
                 deal_id=deal_id,
                 stage_id=self.settings.hubspot_deal_stage_closed_won,
                 amount_usd=amount_usd,
+                extra_properties={
+                    "payment_confirmed": "true",
+                    "closed_won_reason": "Autopilot Marketplace checkout",
+                },
             )
         except Exception:
             logger.exception("HubSpot on_deal_closed failed for deal %s (non-fatal)", deal_id)

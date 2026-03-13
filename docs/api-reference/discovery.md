@@ -1,25 +1,21 @@
 # Discovery
 
-Discovery profile endpoints manage the data collected during the guided discovery conversation. The agent builds this profile progressively as it learns about the user's facility, needs, and constraints. This profile drives robot recommendations.
+Discovery profile endpoints manage the structured data collected during the guided discovery conversation. The agent builds this profile progressively as it learns about the user's facility, cleaning methods, and budget. This profile drives robot recommendations and ROI calculations.
 
-## GET /discovery/profiles/:session_id
+> **Note:** Anonymous users interact via the [Sessions API](./sessions.md) (`GET/PUT /api/v1/sessions/me`). The endpoints below are for **authenticated users** whose discovery data is stored in the `discovery_profiles` table, scoped to their company when applicable (migration 026).
 
-Retrieve the discovery profile for a given session.
+## GET /api/v1/discovery
 
-**Auth required:** No (for anonymous sessions) / Yes (for linked sessions)
+Get the authenticated user's discovery profile. Creates one automatically if it doesn't exist. For company members, returns the shared company discovery profile.
+
+**Auth required:** Yes (JWT Bearer token)
 
 ### Request
 
 ```http
-GET /api/v1/discovery/profiles/sess_abc123 HTTP/1.1
+GET /api/v1/discovery HTTP/1.1
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
-
-### Path Parameters
-
-| Parameter    | Type   | Description                                    |
-|--------------|--------|------------------------------------------------|
-| `session_id` | string | The session ID associated with the profile.    |
 
 ### Response
 
@@ -28,149 +24,154 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "session_id": "sess_abc123",
-  "facility_type": "warehouse",
-  "facility_size": "50000 sqft",
-  "cleaning_approach": "autonomous",
-  "priorities": ["efficiency", "low_noise", "minimal_supervision"],
-  "constraints": ["narrow_aisles", "24_7_operation"],
-  "budget": {
-    "min": 15000,
-    "max": 35000,
-    "currency": "USD"
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "profile_id": "660e8400-e29b-41d4-a716-446655440001",
+  "company_id": "770e8400-e29b-41d4-a716-446655440002",
+  "current_question_index": 5,
+  "phase": "roi",
+  "answers": {
+    "company_name": {
+      "questionId": "q1",
+      "key": "company_name",
+      "label": "Company Name",
+      "value": "Calabasas Pickleball Club",
+      "group": "Company"
+    },
+    "monthly_spend": {
+      "questionId": "q6",
+      "key": "monthly_spend",
+      "label": "Monthly Cleaning Spend",
+      "value": "$2k-$5k",
+      "group": "Economics"
+    }
   },
-  "timeline": "within_3_months",
-  "additional_notes": "Need to handle both wet and dry floor types. Concrete and epoxy surfaces.",
-  "completion_percentage": 85,
-  "created_at": "2026-01-15T10:30:00Z",
-  "updated_at": "2026-01-15T11:15:00Z"
+  "roi_inputs": {
+    "monthly_spend": 3500,
+    "sqft": 8000,
+    "hours_per_clean": 4,
+    "cleans_per_week": 7
+  },
+  "selected_product_ids": ["880e8400-e29b-41d4-a716-446655440003"],
+  "timeframe": "monthly",
+  "greenlight": null,
+  "created_at": "2026-03-10T10:30:00Z",
+  "updated_at": "2026-03-10T11:15:00Z",
+  "ready_for_roi": true
 }
 ```
 
-### Errors
+### Response Fields
 
-| Code | Detail                                          |
-|------|-------------------------------------------------|
-| 404  | `"Discovery profile not found for this session"` |
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `uuid` | Discovery profile unique identifier |
+| `profile_id` | `uuid` | Associated user profile ID |
+| `company_id` | `uuid \| null` | Associated company ID (shared across company members) |
+| `current_question_index` | `integer` | Current question index in discovery flow |
+| `phase` | `string` | Current phase: `discovery`, `roi`, or `greenlight` |
+| `answers` | `object` | Discovery answers keyed by question key (see Answer Schema below) |
+| `roi_inputs` | `object \| null` | ROI calculation inputs (monthly_spend, sqft, hours, frequency) |
+| `selected_product_ids` | `uuid[]` | Selected robot IDs from recommendations |
+| `timeframe` | `string \| null` | ROI display timeframe: `monthly` or `yearly` |
+| `greenlight` | `object \| null` | Greenlight phase data (team members, target date) |
+| `ready_for_roi` | `boolean` | Whether 5+ of 6 required questions are answered |
+| `created_at` | `datetime` | Profile creation timestamp |
+| `updated_at` | `datetime` | Last update timestamp |
 
 ---
 
-## PUT /discovery/profiles/:session_id
+## PUT /api/v1/discovery
 
-Update the discovery profile for a session. Fields are merged with existing data. This endpoint is typically called by the agent as it extracts information from the conversation, but can also be called directly.
+Update the authenticated user's discovery profile. All fields are optional — only provided fields are updated. For company members, updates the shared company discovery profile.
 
-**Auth required:** No (for anonymous sessions) / Yes (for linked sessions)
+**Auth required:** Yes (JWT Bearer token)
 
 ### Request
 
 ```http
-PUT /api/v1/discovery/profiles/sess_abc123 HTTP/1.1
+PUT /api/v1/discovery HTTP/1.1
 Content-Type: application/json
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 {
-  "facility_type": "warehouse",
-  "facility_size": "50000 sqft",
-  "cleaning_approach": "autonomous",
-  "priorities": ["efficiency", "low_noise", "minimal_supervision"],
-  "budget": {
-    "min": 15000,
-    "max": 35000,
-    "currency": "USD"
-  }
+  "current_question_index": 6,
+  "phase": "roi",
+  "answers": {
+    "company_name": {
+      "questionId": "q1",
+      "key": "company_name",
+      "label": "Company Name",
+      "value": "Calabasas Pickleball Club",
+      "group": "Company"
+    }
+  },
+  "selected_product_ids": ["880e8400-e29b-41d4-a716-446655440003"],
+  "timeframe": "yearly"
 }
 ```
-
-### Path Parameters
-
-| Parameter    | Type   | Description                                    |
-|--------------|--------|------------------------------------------------|
-| `session_id` | string | The session ID associated with the profile.    |
 
 ### Body Parameters
 
-All fields are optional. Only provided fields are updated.
-
-| Field                | Type     | Description                                              |
-|----------------------|----------|----------------------------------------------------------|
-| `facility_type`      | string   | Type of facility (e.g., `"warehouse"`, `"hospital"`, `"office"`, `"retail"`, `"school"`, `"hotel"`). |
-| `facility_size`      | string   | Size description (e.g., `"50000 sqft"`, `"large"`).     |
-| `cleaning_approach`  | string   | Preferred approach: `"autonomous"`, `"semi_autonomous"`, or `"manual_assist"`. |
-| `priorities`         | string[] | Ordered list of priorities (e.g., `"efficiency"`, `"low_noise"`, `"minimal_supervision"`, `"thorough_cleaning"`, `"speed"`). |
-| `constraints`        | string[] | Operational constraints (e.g., `"narrow_aisles"`, `"24_7_operation"`, `"fragile_floors"`, `"heavy_foot_traffic"`). |
-| `budget`             | object   | Budget range with `min`, `max` (numbers), and `currency` (string). |
-| `timeline`           | string   | Purchase timeline: `"immediate"`, `"within_1_month"`, `"within_3_months"`, `"within_6_months"`, `"exploring"`. |
-| `additional_notes`   | string   | Free-text notes about specific requirements.             |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `current_question_index` | `integer` | No | Current question index (≥ 0) |
+| `phase` | `string` | No | Phase: `discovery`, `roi`, or `greenlight` |
+| `answers` | `object` | No | Discovery answers keyed by question key |
+| `roi_inputs` | `object` | No | ROI calculation inputs |
+| `selected_product_ids` | `uuid[]` | No | Selected robot IDs |
+| `timeframe` | `string` | No | `monthly` or `yearly` |
+| `greenlight` | `object` | No | Greenlight phase data |
 
 ### Response
 
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-  "session_id": "sess_abc123",
-  "facility_type": "warehouse",
-  "facility_size": "50000 sqft",
-  "cleaning_approach": "autonomous",
-  "priorities": ["efficiency", "low_noise", "minimal_supervision"],
-  "constraints": [],
-  "budget": {
-    "min": 15000,
-    "max": 35000,
-    "currency": "USD"
-  },
-  "timeline": null,
-  "additional_notes": null,
-  "completion_percentage": 65,
-  "created_at": "2026-01-15T10:30:00Z",
-  "updated_at": "2026-01-15T11:00:00Z"
-}
-```
+Returns the updated `DiscoveryProfileResponse` (same shape as GET).
 
 ### Errors
 
-| Code | Detail                                    |
-|------|-------------------------------------------|
-| 404  | `"Session not found"`                     |
-| 422  | Validation error on fields                |
+| Code | Detail |
+|------|--------|
+| 401 | Not authenticated |
+| 404 | `"Discovery profile not found"` |
+| 422 | Validation error on fields |
 
-## Discovery Profile Schema
+---
 
-| Field                  | Type     | Description                                              |
-|------------------------|----------|----------------------------------------------------------|
-| `session_id`           | string   | Associated session ID.                                   |
-| `facility_type`        | string   | Type of facility.                                        |
-| `facility_size`        | string   | Facility size description.                               |
-| `cleaning_approach`    | string   | Preferred cleaning approach.                             |
-| `priorities`           | string[] | Ordered list of user priorities.                         |
-| `constraints`          | string[] | Operational constraints.                                 |
-| `budget`               | object   | Budget range (`min`, `max`, `currency`).                 |
-| `timeline`             | string   | Purchase timeline.                                       |
-| `additional_notes`     | string   | Free-text notes.                                         |
-| `completion_percentage`| integer  | How complete the profile is (0-100).                     |
-| `created_at`           | string   | ISO 8601 creation timestamp.                             |
-| `updated_at`           | string   | ISO 8601 last update timestamp.                          |
+## Discovery Answer Schema
 
-## Facility Types
+Each answer in the `answers` object follows this structure:
 
-| Value         | Description              |
-|---------------|--------------------------|
-| `warehouse`   | Warehouse or distribution center. |
-| `hospital`    | Hospital or healthcare facility.  |
-| `office`      | Office building.                  |
-| `retail`      | Retail store or shopping center.  |
-| `school`      | School or university campus.      |
-| `hotel`       | Hotel or hospitality venue.       |
-| `airport`     | Airport terminal.                 |
-| `manufacturing` | Manufacturing facility.         |
+| Field | Type | Description |
+|-------|------|-------------|
+| `questionId` | `string` | Unique question identifier |
+| `key` | `string` | Answer key (e.g., `company_name`, `monthly_spend`) |
+| `label` | `string` | Human-readable label |
+| `value` | `string` | The user's answer |
+| `group` | `string` | Answer group: `Company`, `Facility`, `Operations`, `Economics`, or `Context` |
 
-## Timeline Values
+### Required Question Keys
 
-| Value              | Description                  |
-|--------------------|------------------------------|
-| `immediate`        | Ready to purchase now.       |
-| `within_1_month`   | Within the next month.       |
-| `within_3_months`  | Within the next 3 months.    |
-| `within_6_months`  | Within the next 6 months.    |
-| `exploring`        | Just exploring options.      |
+The `ready_for_roi` flag requires 5+ of these 6 keys to be answered:
+
+| Key | Group | Description |
+|-----|-------|-------------|
+| `company_type` | Company | Facility type (e.g., Pickleball Club, Warehouse) |
+| `sqft` | Facility | Approximate facility size |
+| `method` | Operations | Current cleaning method |
+| `frequency` | Operations | Cleaning frequency |
+| `duration` | Operations | Hours per cleaning session |
+| `monthly_spend` | Economics | Current monthly cleaning spend |
+
+> `company_name` is also collected but does not count toward the ROI readiness gate. For company members, `company_name` is considered answered from their company profile.
+
+---
+
+## Anonymous Discovery (via Sessions API)
+
+Anonymous users who haven't signed up yet store discovery data in the **sessions** table via:
+
+- `GET /api/v1/sessions/me` — retrieve session with `answers` JSONB field
+- `PUT /api/v1/sessions/me` — update session answers, phase, selected_product_ids
+
+When the user signs up, `POST /api/v1/sessions/me/claim` transfers the anonymous session data to a `discovery_profiles` row.
+
+See [Sessions API](./sessions.md) for full details.

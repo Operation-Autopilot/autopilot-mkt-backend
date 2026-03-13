@@ -12,8 +12,16 @@ from src.api.deps import (
     get_session_token,
     set_session_cookie,
 )
-from src.schemas.session import SessionClaimResponse, SessionResponse, SessionUpdate
+from src.schemas.session import (
+    SessionClaimRequest,
+    SessionClaimResponse,
+    SessionConflictResponse,
+    SessionConflictSummary,
+    SessionResponse,
+    SessionUpdate,
+)
 from src.services.checkout_service import CheckoutService
+from src.services.company_service import CompanyService
 from src.services.extraction_constants import REQUIRED_QUESTION_KEYS
 from src.services.profile_service import ProfileService
 from src.services.session_service import SessionService
@@ -163,6 +171,65 @@ async def update_my_session(
     return SessionResponse(**session, ready_for_roi=ready_for_roi)
 
 
+@router.get(
+    "/conflict-check",
+    response_model=SessionConflictResponse,
+    summary="Check for data conflict between session and account",
+    description="Compares anonymous session data with existing account data to detect conflicts.",
+)
+async def check_conflict(
+    request: Request,
+    user: CurrentUser,
+) -> SessionConflictResponse:
+    """Check if both anonymous session and account have meaningful data.
+
+    Used before claiming to determine if the user should be prompted to choose
+    which data to keep.
+
+    Args:
+        request: FastAPI request object for reading session token.
+        user: The authenticated user context (from JWT).
+
+    Returns:
+        SessionConflictResponse: Conflict status and data summaries.
+    """
+    session_token = get_session_token(request)
+    if not session_token:
+        # No anonymous session — no conflict possible
+        return SessionConflictResponse(
+            has_conflict=False,
+            anonymous=SessionConflictSummary(),
+            account=SessionConflictSummary(),
+        )
+
+    session_service = SessionService()
+    profile_service = ProfileService()
+
+    session = await session_service.get_session_by_token(session_token)
+    if not session:
+        return SessionConflictResponse(
+            has_conflict=False,
+            anonymous=SessionConflictSummary(),
+            account=SessionConflictSummary(),
+        )
+
+    profile = await profile_service.get_or_create_profile(
+        user_id=user.user_id,
+        email=user.email,
+    )
+
+    result = await session_service.check_conflict(
+        session_id=UUID(session["id"]),
+        profile_id=UUID(profile["id"]),
+    )
+
+    return SessionConflictResponse(
+        has_conflict=result["has_conflict"],
+        anonymous=SessionConflictSummary(**result["anonymous"]),
+        account=SessionConflictSummary(**result["account"]),
+    )
+
+
 @router.post(
     "/claim",
     response_model=SessionClaimResponse,
@@ -173,6 +240,7 @@ async def claim_session(
     request: Request,
     response: Response,
     user: CurrentUser,
+    body: SessionClaimRequest | None = None,
 ) -> SessionClaimResponse:
     """Claim a session and transfer data to user profile.
 
@@ -218,11 +286,14 @@ async def claim_session(
         email=user.email,
     )
 
+    merge_strategy = body.merge_strategy if body else "keep_account"
+
     try:
         # Claim the session (transfers discovery data, conversation, and orders)
         result = await session_service.claim_session(
             session_id=UUID(session["id"]),
             profile_id=UUID(profile["id"]),
+            merge_strategy=merge_strategy,
         )
 
         # Clear the session cookie
@@ -240,3 +311,105 @@ async def claim_session(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         ) from e
+
+
+@router.get(
+    "/profile-conflict",
+    response_model=SessionConflictResponse,
+    summary="Check for data conflict between personal and company profiles",
+    description="Compares user's personal discovery profile with their company's profile after joining via invitation.",
+)
+async def check_profile_conflict(
+    user: CurrentUser,
+) -> SessionConflictResponse:
+    """Check if user has conflicting personal vs company discovery profiles.
+
+    Used after accepting an invitation to determine if the user should choose
+    which data to keep (personal or company).
+
+    Args:
+        user: The authenticated user context (from JWT).
+
+    Returns:
+        SessionConflictResponse: Conflict status and data summaries.
+    """
+    profile_service = ProfileService()
+    profile = await profile_service.get_or_create_profile(
+        user_id=user.user_id,
+        email=user.email,
+    )
+
+    company_service = CompanyService()
+    company = await company_service.get_user_company(UUID(profile["id"]))
+
+    if not company:
+        return SessionConflictResponse(
+            has_conflict=False,
+            anonymous=SessionConflictSummary(),
+            account=SessionConflictSummary(),
+        )
+
+    session_service = SessionService()
+    result = await session_service.check_profile_conflict(
+        profile_id=UUID(profile["id"]),
+        company_id=UUID(company["id"]),
+    )
+
+    return SessionConflictResponse(
+        has_conflict=result["has_conflict"],
+        anonymous=SessionConflictSummary(**result["anonymous"]),
+        account=SessionConflictSummary(**result["account"]),
+    )
+
+
+@router.post(
+    "/resolve-profile-conflict",
+    response_model=dict,
+    summary="Resolve data conflict between personal and company profiles",
+    description="Applies the chosen merge strategy to resolve personal vs company profile conflict.",
+)
+async def resolve_profile_conflict(
+    user: CurrentUser,
+    body: SessionClaimRequest,
+) -> dict:
+    """Resolve conflict between personal and company discovery profiles.
+
+    Args:
+        user: The authenticated user context (from JWT).
+        body: Contains merge_strategy: keep_account (company data) or keep_session (personal data).
+
+    Returns:
+        dict: Success message.
+
+    Raises:
+        HTTPException: 400 if no company or no personal profile.
+    """
+    profile_service = ProfileService()
+    profile = await profile_service.get_or_create_profile(
+        user_id=user.user_id,
+        email=user.email,
+    )
+
+    company_service = CompanyService()
+    company = await company_service.get_user_company(UUID(profile["id"]))
+
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User does not belong to a company.",
+        )
+
+    session_service = SessionService()
+    try:
+        await session_service.resolve_profile_conflict(
+            profile_id=UUID(profile["id"]),
+            company_id=UUID(company["id"]),
+            merge_strategy=body.merge_strategy,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+    return {"message": "Profile conflict resolved successfully"}

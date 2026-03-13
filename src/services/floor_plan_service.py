@@ -253,10 +253,17 @@ class FloorPlanService(BaseService):
             discovery_updated = False
             if profile_id:
                 try:
+                    # Resolve company_id for the user
+                    from src.services.company_service import CompanyService
+                    company_service = CompanyService()
+                    company = await company_service.get_user_company(profile_id)
+                    floor_plan_company_id = UUID(company["id"]) if company else None
+
                     await self.discovery_profile_service.update_from_floor_plan(
                         profile_id=profile_id,
                         extracted_features=extracted_features,
                         cost_estimate=cost_estimate,
+                        company_id=floor_plan_company_id,
                     )
                     discovery_updated = True
                 except Exception as e:
@@ -887,7 +894,7 @@ class FloorPlanService(BaseService):
         from src.services.roi_service import get_roi_service
 
         # Get discovery profile with updated answers
-        profile = await self.discovery_profile_service.get_by_profile_id(profile_id)
+        profile = await self.discovery_profile_service.get_for_user(profile_id)
         if not profile:
             return None
 

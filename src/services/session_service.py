@@ -243,10 +243,157 @@ class SessionService(BaseService):
 
         return response.data[0] if response.data else None
 
+    async def check_conflict(
+        self,
+        session_id: UUID,
+        profile_id: UUID,
+    ) -> dict[str, Any]:
+        """Check if both anonymous session and account have meaningful data.
+
+        Args:
+            session_id: The anonymous session UUID.
+            profile_id: The authenticated user's profile UUID.
+
+        Returns:
+            dict with has_conflict, anonymous summary, and account summary.
+        """
+        phase_weight = {"discovery": 0, "roi": 2, "greenlight": 4}
+
+        # Get anonymous session data
+        session = await self.get_session_by_id(session_id)
+        anon_answers = session.get("answers", {}) if session else {}
+        anon_phase = session.get("phase", "discovery") if session else "discovery"
+        anon_products = session.get("selected_product_ids", []) if session else []
+        anon_greenlight = session.get("greenlight") or {} if session else {}
+
+        # Count anonymous conversation messages
+        anon_msg_count = 0
+        conversation_id = session.get("conversation_id") if session else None
+        if conversation_id:
+            msg_query = (
+                self.client.table("messages")
+                .select("id", count="exact")
+                .eq("conversation_id", str(conversation_id))
+            )
+            msg_response = await self._execute_sync(msg_query)
+            anon_msg_count = msg_response.count if msg_response.count else 0
+
+        # Extract anonymous greenlight fields
+        anon_robot_selected = len(anon_products) > 0
+        anon_team_members = [
+            m for m in anon_greenlight.get("team_members", [])
+            if isinstance(m, dict) and m.get("email")
+        ]
+        anon_team_member_count = len(anon_team_members)
+        anon_has_target_date = bool(anon_greenlight.get("target_start_date"))
+
+        # Get account discovery profile
+        dp_query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("profile_id", str(profile_id))
+            .limit(1)
+        )
+        dp_response = await self._execute_sync(dp_query)
+        acct_profile = dp_response.data[0] if dp_response.data else None
+
+        acct_answers = acct_profile.get("answers", {}) if acct_profile else {}
+        acct_phase = acct_profile.get("phase", "discovery") if acct_profile else "discovery"
+        acct_products = acct_profile.get("selected_product_ids", []) if acct_profile else []
+        acct_greenlight = (acct_profile.get("greenlight") or {}) if acct_profile else {}
+
+        # Extract account greenlight fields
+        acct_robot_selected = len(acct_products) > 0
+        acct_team_members = [
+            m for m in acct_greenlight.get("team_members", [])
+            if isinstance(m, dict) and m.get("email")
+        ]
+        acct_team_member_count = len(acct_team_members)
+        acct_has_target_date = bool(acct_greenlight.get("target_start_date"))
+
+        # Count account conversation messages
+        acct_msg_count = 0
+        conv_query = (
+            self.client.table("conversations")
+            .select("id")
+            .eq("profile_id", str(profile_id))
+            .limit(1)
+        )
+        conv_response = await self._execute_sync(conv_query)
+        if conv_response.data:
+            acct_conv_id = conv_response.data[0]["id"]
+            acct_msg_query = (
+                self.client.table("messages")
+                .select("id", count="exact")
+                .eq("conversation_id", str(acct_conv_id))
+            )
+            acct_msg_response = await self._execute_sync(acct_msg_query)
+            acct_msg_count = acct_msg_response.count if acct_msg_response.count else 0
+
+        # Compute richness scores (messages excluded — chatting ≠ progress)
+        anon_richness = (
+            phase_weight.get(anon_phase, 0)
+            + len(anon_answers)
+            + (1 if anon_robot_selected else 0)
+            + anon_team_member_count
+            + (1 if anon_has_target_date else 0)
+        )
+        acct_richness = (
+            phase_weight.get(acct_phase, 0)
+            + len(acct_answers)
+            + (1 if acct_robot_selected else 0)
+            + acct_team_member_count
+            + (1 if acct_has_target_date else 0)
+        )
+
+        anon_summary = {
+            "message_count": anon_msg_count,
+            "answer_count": len(anon_answers),
+            "phase": anon_phase,
+            "robot_selected": anon_robot_selected,
+            "team_member_count": anon_team_member_count,
+            "has_target_date": anon_has_target_date,
+            "richness_score": anon_richness,
+        }
+        acct_summary = {
+            "message_count": acct_msg_count,
+            "answer_count": len(acct_answers),
+            "phase": acct_phase,
+            "robot_selected": acct_robot_selected,
+            "team_member_count": acct_team_member_count,
+            "has_target_date": acct_has_target_date,
+            "richness_score": acct_richness,
+        }
+
+        # Meaningful = at least 1 answer OR phase > discovery OR robot selected OR greenlight data
+        # Messages alone do NOT make it meaningful
+        anon_meaningful = (
+            len(anon_answers) > 0
+            or anon_phase != "discovery"
+            or anon_robot_selected
+            or anon_team_member_count > 0
+            or anon_has_target_date
+        )
+        acct_meaningful = (
+            len(acct_answers) > 0
+            or acct_phase != "discovery"
+            or acct_robot_selected
+            or acct_team_member_count > 0
+            or acct_has_target_date
+        )
+
+        return {
+            "has_conflict": anon_meaningful and acct_meaningful,
+            "anonymous": anon_summary,
+            "account": acct_summary,
+        }
+
     async def claim_session(
         self,
         session_id: UUID,
         profile_id: UUID,
+        company_id: UUID | None = None,
+        merge_strategy: str = "keep_account",
     ) -> dict[str, Any]:
         """Claim a session and merge its data to a user profile.
 
@@ -257,6 +404,9 @@ class SessionService(BaseService):
         Args:
             session_id: The session UUID to claim.
             profile_id: The profile UUID to claim the session for.
+            company_id: Optional company UUID for company-scoped discovery.
+            merge_strategy: "keep_account" preserves existing profile data (default),
+                "keep_session" overwrites with anonymous session data.
 
         Returns:
             dict: Result containing discovery_profile, conversation_transferred,
@@ -278,6 +428,17 @@ class SessionService(BaseService):
             if expires_at < datetime.now(timezone.utc):
                 raise ValueError("Session has expired")
 
+        # Resolve company_id if not provided
+        if not company_id:
+            try:
+                from src.services.company_service import CompanyService
+                company_service = CompanyService()
+                company = await company_service.get_user_company(profile_id)
+                if company:
+                    company_id = UUID(company["id"])
+            except Exception as e:
+                logger.warning("Failed to resolve company for session claim: %s", e)
+
         # Atomically claim the session — prevents double-claim race condition
         # The WHERE clause ensures only one request can succeed
         claim_query = (
@@ -294,6 +455,8 @@ class SessionService(BaseService):
         discovery_profile = await self._create_or_update_discovery_profile(
             profile_id=profile_id,
             session=session,
+            company_id=company_id,
+            merge_strategy=merge_strategy,
         )
 
         # Transfer conversation ownership if exists
@@ -304,6 +467,7 @@ class SessionService(BaseService):
                 await self._transfer_conversation_ownership(
                     conversation_id=UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id,
                     profile_id=profile_id,
+                    merge_strategy=merge_strategy,
                 )
                 conversation_transferred = True
             except Exception as e:
@@ -328,76 +492,116 @@ class SessionService(BaseService):
         self,
         profile_id: UUID,
         session: dict[str, Any],
+        company_id: UUID | None = None,
+        merge_strategy: str = "keep_account",
     ) -> dict[str, Any]:
         """Create or update a discovery profile from session data.
-
-        Uses smart merge logic: only updates fields that are empty/default in the
-        existing profile, preserving any existing progress.
 
         Args:
             profile_id: The profile UUID.
             session: The session data to copy.
+            company_id: Optional company UUID for company-scoped profiles.
+            merge_strategy: "keep_account" preserves existing profile data,
+                "keep_session" overwrites with session data.
 
         Returns:
             dict: The created or updated discovery profile.
         """
-        # Check if discovery profile exists
-        query = (
-            self.client.table("discovery_profiles")
-            .select("*")
-            .eq("profile_id", str(profile_id))
-        )
-        existing = await self._execute_sync(query)
+        # Check if discovery profile exists (company-scoped or personal)
+        existing_profile = None
+        if company_id:
+            query = (
+                self.client.table("discovery_profiles")
+                .select("*")
+                .eq("company_id", str(company_id))
+                .maybe_single()
+            )
+            response = await self._execute_sync(query)
+            if response and response.data:
+                existing_profile = response.data
 
-        if existing.data:
-            # Smart merge: only update empty/default fields, preserve existing progress
-            existing_profile = existing.data[0]
-            merged_data = {}
+        if not existing_profile:
+            query = (
+                self.client.table("discovery_profiles")
+                .select("*")
+                .eq("profile_id", str(profile_id))
+            )
+            existing = await self._execute_sync(query)
+            if existing.data:
+                existing_profile = existing.data[0]
 
-            # current_question_index: keep higher value (more progress)
-            session_index = session.get("current_question_index", 0)
-            existing_index = existing_profile.get("current_question_index", 0)
-            if session_index > existing_index:
-                merged_data["current_question_index"] = session_index
+        if existing_profile:
+            merged_data: dict[str, Any] = {}
 
-            # phase: only update if existing is at default "discovery" and session progressed
-            existing_phase = existing_profile.get("phase", "discovery")
-            session_phase = session.get("phase", "discovery")
-            if existing_phase == "discovery" and session_phase in ["roi", "greenlight"]:
-                merged_data["phase"] = session_phase
+            if merge_strategy == "keep_session":
+                # Session data overwrites account data
+                session_index = session.get("current_question_index", 0)
+                if session_index:
+                    merged_data["current_question_index"] = session_index
 
-            # answers: merge dicts, session answers take precedence over existing
-            existing_answers = existing_profile.get("answers", {}) or {}
-            session_answers = session.get("answers", {}) or {}
-            if session_answers:
-                merged_answers = {**existing_answers, **session_answers}
-                if merged_answers != existing_answers:
-                    merged_data["answers"] = merged_answers
+                session_phase = session.get("phase", "discovery")
+                if session_phase != "discovery":
+                    merged_data["phase"] = session_phase
 
-            # roi_inputs: only update if existing is None/empty
-            if not existing_profile.get("roi_inputs") and session.get("roi_inputs"):
-                merged_data["roi_inputs"] = session["roi_inputs"]
+                session_answers = session.get("answers", {}) or {}
+                if session_answers:
+                    merged_data["answers"] = session_answers
 
-            # selected_product_ids: only update if existing is empty
-            existing_products = existing_profile.get("selected_product_ids", []) or []
-            session_products = session.get("selected_product_ids", []) or []
-            if not existing_products and session_products:
-                merged_data["selected_product_ids"] = session_products
+                if session.get("roi_inputs"):
+                    merged_data["roi_inputs"] = session["roi_inputs"]
 
-            # timeframe: only update if existing is None
-            if not existing_profile.get("timeframe") and session.get("timeframe"):
-                merged_data["timeframe"] = session["timeframe"]
+                session_products = session.get("selected_product_ids", []) or []
+                if session_products:
+                    merged_data["selected_product_ids"] = session_products
 
-            # greenlight: only update if existing is None/empty
-            if not existing_profile.get("greenlight") and session.get("greenlight"):
-                merged_data["greenlight"] = session["greenlight"]
+                if session.get("timeframe"):
+                    merged_data["timeframe"] = session["timeframe"]
+
+                if session.get("greenlight"):
+                    merged_data["greenlight"] = session["greenlight"]
+            else:
+                # keep_account: only update empty/default fields, preserve existing progress
+                session_index = session.get("current_question_index", 0)
+                existing_index = existing_profile.get("current_question_index", 0)
+                if session_index > existing_index:
+                    merged_data["current_question_index"] = session_index
+
+                existing_phase = existing_profile.get("phase", "discovery")
+                session_phase = session.get("phase", "discovery")
+                if existing_phase == "discovery" and session_phase in ["roi", "greenlight"]:
+                    merged_data["phase"] = session_phase
+
+                existing_answers = existing_profile.get("answers", {}) or {}
+                session_answers = session.get("answers", {}) or {}
+                if session_answers:
+                    merged_answers = {**existing_answers, **session_answers}
+                    if merged_answers != existing_answers:
+                        merged_data["answers"] = merged_answers
+
+                if not existing_profile.get("roi_inputs") and session.get("roi_inputs"):
+                    merged_data["roi_inputs"] = session["roi_inputs"]
+
+                existing_products = existing_profile.get("selected_product_ids", []) or []
+                session_products = session.get("selected_product_ids", []) or []
+                if not existing_products and session_products:
+                    merged_data["selected_product_ids"] = session_products
+
+                if not existing_profile.get("timeframe") and session.get("timeframe"):
+                    merged_data["timeframe"] = session["timeframe"]
+
+                if not existing_profile.get("greenlight") and session.get("greenlight"):
+                    merged_data["greenlight"] = session["greenlight"]
+
+            # Link to company if not already linked
+            if company_id and not existing_profile.get("company_id"):
+                merged_data["company_id"] = str(company_id)
 
             # Only update if there's something to merge
             if merged_data:
                 query = (
                     self.client.table("discovery_profiles")
                     .update(merged_data)
-                    .eq("profile_id", str(profile_id))
+                    .eq("id", existing_profile["id"])
                 )
                 response = await self._execute_sync(query)
                 if response.data and len(response.data) > 0:
@@ -408,7 +612,7 @@ class SessionService(BaseService):
                 return existing_profile
         else:
             # Create new profile with session data
-            profile_data = {
+            profile_data: dict[str, Any] = {
                 "profile_id": str(profile_id),
                 "current_question_index": session.get("current_question_index", 0),
                 "phase": session.get("phase", "discovery"),
@@ -418,6 +622,8 @@ class SessionService(BaseService):
                 "timeframe": session.get("timeframe"),
                 "greenlight": session.get("greenlight"),
             }
+            if company_id:
+                profile_data["company_id"] = str(company_id)
             query = (
                 self.client.table("discovery_profiles")
                 .insert(profile_data)
@@ -431,18 +637,236 @@ class SessionService(BaseService):
         self,
         conversation_id: UUID,
         profile_id: UUID,
+        merge_strategy: str = "keep_account",
     ) -> None:
         """Transfer conversation ownership from session to user profile.
+
+        Behavior depends on merge_strategy:
+        - keep_account: skip transfer if user already has conversations (preserve existing)
+        - keep_session: always transfer the anonymous conversation
 
         Args:
             conversation_id: The conversation UUID.
             profile_id: The profile UUID to transfer to.
+            merge_strategy: "keep_account" or "keep_session".
         """
+        if merge_strategy == "keep_account":
+            # Check if user already has conversations — preserve existing
+            existing_query = (
+                self.client.table("conversations")
+                .select("id")
+                .eq("profile_id", str(profile_id))
+                .limit(1)
+            )
+            existing_response = await self._execute_sync(existing_query)
+            if existing_response.data:
+                logger.info(
+                    "Skipping conversation transfer — user %s already has conversations (keep_account)",
+                    profile_id,
+                )
+                return
+
         # Update conversation to be owned by the profile instead of session
         query = self.client.table("conversations").update(
             {"profile_id": str(profile_id), "session_id": None}
         ).eq("id", str(conversation_id))
         await self._execute_sync(query)
+
+    async def check_profile_conflict(
+        self,
+        profile_id: UUID,
+        company_id: UUID,
+    ) -> dict[str, Any]:
+        """Check if user has conflicting personal vs company discovery profiles.
+
+        Compares a user's personal discovery profile (company_id IS NULL) with
+        the company's discovery profile to detect meaningful data on both sides.
+
+        Args:
+            profile_id: The authenticated user's profile UUID.
+            company_id: The company UUID the user just joined.
+
+        Returns:
+            dict with has_conflict, anonymous (personal) summary, and account (company) summary.
+        """
+        phase_weight = {"discovery": 0, "roi": 2, "greenlight": 4}
+
+        # Get user's personal profile (no company)
+        personal_query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("profile_id", str(profile_id))
+            .is_("company_id", "null")
+            .maybe_single()
+        )
+        personal_response = await self._execute_sync(personal_query)
+        personal_profile = personal_response.data if personal_response and personal_response.data else None
+
+        # Get company's discovery profile
+        company_query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("company_id", str(company_id))
+            .maybe_single()
+        )
+        company_response = await self._execute_sync(company_query)
+        company_profile = company_response.data if company_response and company_response.data else None
+
+        def _build_summary(profile: dict[str, Any] | None) -> dict[str, Any]:
+            answers = profile.get("answers", {}) if profile else {}
+            phase = profile.get("phase", "discovery") if profile else "discovery"
+            products = profile.get("selected_product_ids", []) if profile else []
+            greenlight = (profile.get("greenlight") or {}) if profile else {}
+
+            robot_selected = len(products) > 0
+            team_members = [
+                m for m in greenlight.get("team_members", [])
+                if isinstance(m, dict) and m.get("email")
+            ]
+            team_member_count = len(team_members)
+            has_target_date = bool(greenlight.get("target_start_date"))
+
+            richness = (
+                phase_weight.get(phase, 0)
+                + len(answers)
+                + (1 if robot_selected else 0)
+                + team_member_count
+                + (1 if has_target_date else 0)
+            )
+
+            return {
+                "message_count": 0,
+                "answer_count": len(answers),
+                "phase": phase,
+                "robot_selected": robot_selected,
+                "team_member_count": team_member_count,
+                "has_target_date": has_target_date,
+                "richness_score": richness,
+            }
+
+        personal_summary = _build_summary(personal_profile)
+        company_summary = _build_summary(company_profile)
+
+        # Meaningful = at least 1 answer OR phase > discovery OR robot selected OR greenlight data
+        def _is_meaningful(summary: dict[str, Any]) -> bool:
+            return (
+                summary["answer_count"] > 0
+                or summary["phase"] != "discovery"
+                or summary["robot_selected"]
+                or summary["team_member_count"] > 0
+                or summary["has_target_date"]
+            )
+
+        return {
+            "has_conflict": _is_meaningful(personal_summary) and _is_meaningful(company_summary),
+            "anonymous": personal_summary,
+            "account": company_summary,
+        }
+
+    async def resolve_profile_conflict(
+        self,
+        profile_id: UUID,
+        company_id: UUID,
+        merge_strategy: str = "keep_account",
+    ) -> dict[str, Any]:
+        """Resolve conflict between personal and company discovery profiles.
+
+        Args:
+            profile_id: The authenticated user's profile UUID.
+            company_id: The company UUID the user belongs to.
+            merge_strategy: "keep_account" keeps company data and deletes personal profile,
+                "keep_session" overwrites company profile with personal data then deletes personal.
+
+        Returns:
+            dict: The resulting company discovery profile.
+
+        Raises:
+            ValueError: If personal profile not found.
+        """
+        # Get user's personal profile (no company)
+        personal_query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("profile_id", str(profile_id))
+            .is_("company_id", "null")
+            .maybe_single()
+        )
+        personal_response = await self._execute_sync(personal_query)
+        personal_profile = personal_response.data if personal_response and personal_response.data else None
+
+        if not personal_profile:
+            raise ValueError("No personal discovery profile found")
+
+        # Get company's discovery profile
+        company_query = (
+            self.client.table("discovery_profiles")
+            .select("*")
+            .eq("company_id", str(company_id))
+            .maybe_single()
+        )
+        company_response = await self._execute_sync(company_query)
+        company_profile = company_response.data if company_response and company_response.data else None
+
+        if merge_strategy == "keep_session":
+            # Overwrite company profile with personal data
+            personal_data: dict[str, Any] = {}
+            personal_answers = personal_profile.get("answers", {}) or {}
+            if personal_answers:
+                personal_data["answers"] = personal_answers
+            personal_phase = personal_profile.get("phase", "discovery")
+            if personal_phase != "discovery":
+                personal_data["phase"] = personal_phase
+            if personal_profile.get("roi_inputs"):
+                personal_data["roi_inputs"] = personal_profile["roi_inputs"]
+            personal_products = personal_profile.get("selected_product_ids", []) or []
+            if personal_products:
+                personal_data["selected_product_ids"] = personal_products
+            if personal_profile.get("greenlight"):
+                personal_data["greenlight"] = personal_profile["greenlight"]
+            if personal_profile.get("timeframe"):
+                personal_data["timeframe"] = personal_profile["timeframe"]
+
+            if company_profile and personal_data:
+                update_query = (
+                    self.client.table("discovery_profiles")
+                    .update(personal_data)
+                    .eq("id", company_profile["id"])
+                )
+                response = await self._execute_sync(update_query)
+                result_profile = response.data[0] if response.data else company_profile
+            elif not company_profile:
+                # No company profile yet — create one from personal data
+                new_profile_data: dict[str, Any] = {
+                    "profile_id": str(profile_id),
+                    "company_id": str(company_id),
+                    "phase": personal_profile.get("phase", "discovery"),
+                    "answers": personal_profile.get("answers", {}),
+                    "roi_inputs": personal_profile.get("roi_inputs"),
+                    "selected_product_ids": personal_profile.get("selected_product_ids", []),
+                    "greenlight": personal_profile.get("greenlight"),
+                    "timeframe": personal_profile.get("timeframe"),
+                }
+                create_query = (
+                    self.client.table("discovery_profiles")
+                    .insert(new_profile_data)
+                )
+                response = await self._execute_sync(create_query)
+                result_profile = response.data[0] if response.data else new_profile_data
+            else:
+                result_profile = company_profile
+        else:
+            # keep_account: company data stays as-is
+            result_profile = company_profile or {}
+
+        # Delete the personal profile
+        delete_query = (
+            self.client.table("discovery_profiles")
+            .delete()
+            .eq("id", personal_profile["id"])
+        )
+        await self._execute_sync(delete_query)
+
+        return result_profile
 
     async def cleanup_expired_sessions(self) -> int:
         """Delete expired sessions to prevent table bloat.
