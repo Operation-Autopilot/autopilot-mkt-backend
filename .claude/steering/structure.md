@@ -99,6 +99,7 @@ autopilot-mkt-backend/
 │   ├── index_products.py
 │   ├── install-git-hooks.mjs
 │   ├── migrate-dmms-hierarchy.mjs
+│   ├── quick-deploy.sh
 │   ├── seed_test_robot.py
 │   ├── setup-secrets.sh
 │   ├── stripe_dev.sh

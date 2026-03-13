@@ -60,6 +60,8 @@ class HubSpotService:
                     "limit": 1,
                 },
             )
+            if search_resp.status_code >= 400:
+                logger.error("HubSpot contact search failed (%s): %s", search_resp.status_code, search_resp.text)
             search_resp.raise_for_status()
             results = search_resp.json().get("results", [])
             if results:
@@ -82,6 +84,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json={"properties": props},
             )
+            if create_resp.status_code >= 400:
+                logger.error("HubSpot create_contact failed (%s): %s", create_resp.status_code, create_resp.text)
             create_resp.raise_for_status()
             contact_id = create_resp.json()["id"]
             logger.info("HubSpot: created contact %s for %s", contact_id, email)
@@ -108,6 +112,8 @@ class HubSpotService:
                     "limit": 1,
                 },
             )
+            if search_resp.status_code >= 400:
+                logger.error("HubSpot company search failed (%s): %s", search_resp.status_code, search_resp.text)
             search_resp.raise_for_status()
             results = search_resp.json().get("results", [])
             if results:
@@ -118,6 +124,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json={"properties": {"name": name}},
             )
+            if create_resp.status_code >= 400:
+                logger.error("HubSpot create_company failed (%s): %s", create_resp.status_code, create_resp.text)
             create_resp.raise_for_status()
             company_id = create_resp.json()["id"]
             logger.info("HubSpot: created company %s (%s)", company_id, name)
@@ -135,6 +143,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json=[{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 1}],
             )
+            if resp.status_code >= 400:
+                logger.error("HubSpot associate_contact_to_company failed (%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             logger.debug("HubSpot: associated contact %s → company %s", contact_id, company_id)
 
@@ -149,6 +159,8 @@ class HubSpotService:
                     f"{self.BASE_URL}/crm/v3/objects/companies/{company_id}/associations/deals",
                     headers=self._headers(),
                 )
+                if resp.status_code >= 400:
+                    logger.error("HubSpot get_company_deal_ids failed (%s): %s", resp.status_code, resp.text)
                 resp.raise_for_status()
                 results = resp.json().get("results", [])
                 return [r["id"] for r in results]
@@ -167,6 +179,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json=[{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 4}],
             )
+            if resp.status_code >= 400:
+                logger.error("HubSpot associate_contact_to_deal failed (%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             logger.debug("HubSpot: associated contact %s → deal %s", contact_id, deal_id)
 
@@ -184,6 +198,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json={"properties": filtered},
             )
+            if resp.status_code >= 400:
+                logger.error("HubSpot update_company_properties failed (%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             logger.debug("HubSpot: updated company %s with %d props", company_id, len(filtered))
 
@@ -235,6 +251,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json={"properties": properties, "associations": associations},
             )
+            if resp.status_code >= 400:
+                logger.error("HubSpot create_deal failed (%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             deal_id = resp.json()["id"]
             logger.info("HubSpot: created deal %s (stage=%s)", deal_id, stage_id)
@@ -305,7 +323,18 @@ class HubSpotService:
                 except Exception:
                     logger.debug("HubSpot: failed to update company %s properties (non-fatal)", company_id)
 
-        # Build extra deal properties from enrichment data
+        deal_id = await self.create_deal(
+            contact_id=contact_id,
+            company_id=company_id,
+            deal_name=f"{robot_name} — Autopilot Lead",
+            amount_usd=amount_usd,
+            stage_id=self.settings.hubspot_deal_stage_lead,
+            robot_name=robot_name,
+            payment_provider=payment_provider or "checkout",
+            order_id=order_id,
+        )
+
+        # Enrich deal with custom properties (separate call so deal creation isn't blocked)
         deal_extras: dict[str, str] = {
             "robot_model": robot_name,
             "dealtype": "newbusiness",
@@ -317,18 +346,19 @@ class HubSpotService:
         if payment_provider:
             deal_extras["financing_type"] = payment_provider
             deal_extras["financing_required"] = "Yes" if payment_provider == "gynger" else "No"
-
-        deal_id = await self.create_deal(
-            contact_id=contact_id,
-            company_id=company_id,
-            deal_name=f"{robot_name} — Autopilot Lead",
-            amount_usd=amount_usd,
-            stage_id=self.settings.hubspot_deal_stage_lead,
-            robot_name=robot_name,
-            payment_provider=payment_provider or "checkout",
-            order_id=order_id,
-            extra_properties=deal_extras,
-        )
+        try:
+            async with httpx.AsyncClient(timeout=15) as http:
+                resp = await http.patch(
+                    f"{self.BASE_URL}/crm/v3/objects/deals/{deal_id}",
+                    headers=self._headers(),
+                    json={"properties": deal_extras},
+                )
+                if resp.status_code >= 400:
+                    logger.error("HubSpot deal enrichment failed (%s): %s", resp.status_code, resp.text)
+                else:
+                    logger.debug("HubSpot: enriched deal %s with %d custom props", deal_id, len(deal_extras))
+        except Exception:
+            logger.debug("HubSpot: deal enrichment failed for %s (non-fatal)", deal_id)
         logger.info("HubSpot on_checkout_initiated: deal %s for %s (%s)", deal_id, email, robot_name)
         return deal_id
 
@@ -356,6 +386,8 @@ class HubSpotService:
                 headers=self._headers(),
                 json={"properties": props},
             )
+            if resp.status_code >= 400:
+                logger.error("HubSpot update_deal_stage failed (%s): %s", resp.status_code, resp.text)
             resp.raise_for_status()
             logger.info("HubSpot: deal %s → stage %s (amount=%.2f)", deal_id, stage_id, amount_usd)
 

@@ -91,6 +91,14 @@ async def _check_conversation_access(
         if not await service.can_access(
             conversation_id, session_id=auth.session.session_id
         ):
+            # Log the mismatch for debugging session replacement issues
+            conversation = await service.get_conversation(conversation_id)
+            conv_session_id = conversation.get("session_id") if conversation else "NOT_FOUND"
+            logger.warning(
+                "Session access denied: conversation %s belongs to session %s, "
+                "but request has session %s",
+                conversation_id, conv_session_id, auth.session.session_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this conversation",

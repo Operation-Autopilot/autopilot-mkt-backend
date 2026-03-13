@@ -2,7 +2,11 @@
 
 from uuid import UUID
 
+import logging
+
 from fastapi import APIRouter, HTTPException, status
+
+logger = logging.getLogger(__name__)
 
 from src.api.deps import CurrentUser
 from src.schemas.company import (
@@ -241,6 +245,12 @@ async def create_invitation(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.exception("Invitation creation failed for company %s", company_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create invitation: {type(e).__name__}",
         ) from e
     return InvitationResponse(**invitation)
 

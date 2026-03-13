@@ -45,6 +45,9 @@ docs/
 # Frontend (if not needed for backend)
 Autopilot-Marketplace-Discovery-to-Greenlight--main/
 
+# Node
+node_modules/
+
 # Docker
 docker-compose.yml
 Dockerfile.dev
